@@ -9,7 +9,12 @@ import net.tfminecraft.musicalinstruments.commands.InstrumentCommand;
 import net.tfminecraft.musicalinstruments.items.ItemResolver;
 import net.tfminecraft.musicalinstruments.listeners.InstrumentListener;
 import net.tfminecraft.musicalinstruments.managers.InstrumentManager;
+import net.tfminecraft.musicalinstruments.studio.StudioCommand;
+import net.tfminecraft.musicalinstruments.studio.StudioListener;
+import net.tfminecraft.musicalinstruments.studio.StudioMenu;
+import net.tfminecraft.musicalinstruments.studio.StudioService;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,6 +30,7 @@ public class InstrumentPlugin extends JavaPlugin {
     private static InstrumentPlugin instance;
     private ItemResolver itemResolver;
     private InstrumentManager manager;
+    private StudioService studio;
 
     // Play counts since the last bStats submission.
     // Written from the main thread (listener), read and reset from the bStats submit thread every 30 minutes.
@@ -52,6 +58,20 @@ public class InstrumentPlugin extends JavaPlugin {
 
         // Register event listeners
         getServer().getPluginManager().registerEvents(new InstrumentListener(this, manager), this);
+
+        try {
+            studio = new StudioService(this);
+            StudioMenu menu = new StudioMenu(this, studio);
+            StudioCommand musicCommand = new StudioCommand(studio, menu);
+            getCommand("music").setExecutor(musicCommand);
+            getCommand("music").setTabCompleter(musicCommand);
+            getServer().getPluginManager().registerEvents(menu, this);
+            getServer().getPluginManager().registerEvents(new StudioListener(studio, menu), this);
+        } catch (IOException ex) {
+            getLogger().log(java.util.logging.Level.SEVERE, "Could not initialize recording studio", ex);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
 
         setupMetrics();
     }
@@ -90,10 +110,14 @@ public class InstrumentPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (studio != null) {
+            studio.close();
+        }
         getLogger().info("MusicalInstruments is disabled!");
     }
 
     public static InstrumentPlugin getInstance() { return instance; }
     public ItemResolver getItemResolver() { return itemResolver; }
     public InstrumentManager getManager() { return manager; }
+    public StudioService getStudio() { return studio; }
 }

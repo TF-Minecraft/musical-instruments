@@ -1,0 +1,192 @@
+package net.tfminecraft.musicalinstruments.studio;
+
+import org.bukkit.configuration.InvalidConfigurationException;
+import org.bukkit.configuration.file.YamlConfiguration;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+/** Versioned, bounded data files. A failed write never truncates the last saved project. */
+public final class StudioStore {
+    private final Path root;
+
+    public StudioStore(Path root) throws IOException {
+        this.root = root;
+        Files.createDirectories(root.resolve("projects"));
+        Files.createDirectories(root.resolve("songs"));
+    }
+
+    public Optional<Project> project(UUID owner) throws IOException {
+        Path file = root.resolve("projects").resolve(owner + ".yml");
+        if (!Files.exists(file)) {
+            return Optional.empty();
+        }
+        YamlConfiguration yaml = read(file);
+        try {
+            Song song = decodeSong(yaml);
+            if (!song.owner().equals(owner)) {
+                throw new IllegalArgumentException("Project owner mismatch");
+            }
+            Track pending = yaml.isSet("pending") ? decodeTrack(map(yaml.get("pending"))) : null;
+            return Optional.of(new Project(song, pending, yaml.getInt("bpm"), yaml.getBoolean("metronome")));
+        } catch (RuntimeException ex) {
+            throw new IOException("Invalid project " + owner, ex);
+        }
+    }
+
+    public Song song(UUID id) throws IOException {
+        YamlConfiguration yaml = read(root.resolve("songs").resolve(id + ".yml"));
+        try {
+            Song song = decodeSong(yaml);
+            if (!song.id().equals(id)) {
+                throw new IllegalArgumentException("Song ID mismatch");
+            }
+            return song;
+        } catch (RuntimeException ex) {
+            throw new IOException("Invalid song " + id, ex);
+        }
+    }
+
+    public void save(Project project) throws IOException {
+        YamlConfiguration yaml = encodeSong(project.song());
+        yaml.set("bpm", project.bpm());
+        yaml.set("metronome", project.metronome());
+        if (project.pending() != null) {
+            yaml.set("pending", encodeTrack(project.pending()));
+        }
+        write(root.resolve("projects").resolve(project.song().owner() + ".yml"), yaml, true);
+    }
+
+    public void publish(Song song) throws IOException {
+        write(root.resolve("songs").resolve(song.id() + ".yml"), encodeSong(song), false);
+    }
+
+    private YamlConfiguration read(Path file) throws IOException {
+        if (Files.size(file) > 8_000_000) {
+            throw new IOException("Studio file exceeds the size limit: " + file.getFileName());
+        }
+        YamlConfiguration yaml = new YamlConfiguration();
+        try {
+            yaml.loadFromString(Files.readString(file, StandardCharsets.UTF_8));
+        } catch (InvalidConfigurationException ex) {
+            throw new IOException("Invalid studio YAML: " + file.getFileName(), ex);
+        }
+        if (yaml.getInt("format") != 1) {
+            throw new IOException("Unsupported studio format: " + file.getFileName());
+        }
+        return yaml;
+    }
+
+    private void write(Path file, YamlConfiguration yaml, boolean replace) throws IOException {
+        if (!replace && Files.exists(file)) {
+            throw new IOException("Published editions cannot be overwritten");
+        }
+        Path temp = Files.createTempFile(file.getParent(), "studio-", ".tmp");
+        try {
+            Files.writeString(temp, yaml.saveToString(), StandardCharsets.UTF_8);
+            try {
+                if (replace) {
+                    Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE);
+                }
+            } catch (AtomicMoveNotSupportedException ex) {
+                if (replace) {
+                    Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
+                } else {
+                    Files.move(temp, file);
+                }
+            }
+        } finally {
+            Files.deleteIfExists(temp);
+        }
+    }
+
+    private YamlConfiguration encodeSong(Song song) {
+        YamlConfiguration yaml = new YamlConfiguration();
+        yaml.set("format", 1);
+        yaml.set("id", song.id().toString());
+        yaml.set("owner", song.owner().toString());
+        yaml.set("author", song.author());
+        yaml.set("title", song.title());
+        yaml.set("tracks", song.tracks().stream().map(this::encodeTrack).toList());
+        return yaml;
+    }
+
+    private Map<String, Object> encodeTrack(Track track) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("slot", track.slot());
+        result.put("length", track.lengthTicks());
+        result.put("gain", track.gain());
+        result.put("muted", track.muted());
+        result.put("notes", track.notes().stream().map(note -> List.of(
+                note.tick(), note.instrument(), note.sound(), note.volume(), note.pitch())).toList());
+        return result;
+    }
+
+    private Song decodeSong(YamlConfiguration yaml) {
+        List<?> raw = list(yaml.get("tracks"));
+        if (raw.size() > Song.MAX_TRACKS) {
+            throw new IllegalArgumentException("Too many tracks");
+        }
+        List<Track> tracks = raw.stream().map(value -> decodeTrack(map(value))).toList();
+        return new Song(UUID.fromString(yaml.getString("id")), UUID.fromString(yaml.getString("owner")),
+                yaml.getString("author"), yaml.getString("title"), tracks);
+    }
+
+    private Track decodeTrack(Map<?, ?> raw) {
+        List<?> entries = list(raw.get("notes"));
+        if (entries.size() > Song.MAX_NOTES) {
+            throw new IllegalArgumentException("Too many notes");
+        }
+        List<Note> notes = new ArrayList<>();
+        for (Object value : entries) {
+            List<?> note = list(value);
+            if (note.size() != 5) {
+                throw new IllegalArgumentException("Invalid note fields");
+            }
+            notes.add(new Note(integer(note.get(0)), (String) note.get(1), (String) note.get(2),
+                    number(note.get(3)).floatValue(), number(note.get(4)).floatValue()));
+        }
+        return new Track(integer(raw.get("slot")), integer(raw.get("length")),
+                number(raw.get("gain")).floatValue(), (Boolean) raw.get("muted"), notes);
+    }
+
+    private Map<?, ?> map(Object value) {
+        // Bukkit turns root-level maps into configuration sections.
+        if (value instanceof org.bukkit.configuration.ConfigurationSection section) {
+            return section.getValues(false);
+        }
+        return (Map<?, ?>) value;
+    }
+
+    private List<?> list(Object value) {
+        return (List<?>) value;
+    }
+
+    private Number number(Object value) {
+        if (!(value instanceof Number number)) {
+            throw new IllegalArgumentException("Expected a number");
+        }
+        return number;
+    }
+
+    private int integer(Object value) {
+        Number number = number(value);
+        double decimal = number.doubleValue();
+        if (!Double.isFinite(decimal) || decimal != number.intValue()) {
+            throw new IllegalArgumentException("Expected a bounded integer");
+        }
+        return number.intValue();
+    }
+}

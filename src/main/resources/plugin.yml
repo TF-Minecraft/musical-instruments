@@ -9,8 +9,21 @@ commands:
   instruments:
     description: Musical instruments commands
     usage: /instruments <keybinds|list|give|reload>
+  music:
+    description: Record layered instrument tracks and publish playable discs
+    usage: /music help
+    aliases: [recording]
 
 permissions:
+  instruments.record:
+    description: Create projects, record tracks, prepare blank discs and publish editions
+    default: true
+  instruments.play:
+    description: Play recorded discs in jukeboxes
+    default: true
+  instruments.copy:
+    description: Copy a recorded disc onto a blank disc
+    default: true
   instruments.use:
     description: Use /instruments keybinds and list
     default: true

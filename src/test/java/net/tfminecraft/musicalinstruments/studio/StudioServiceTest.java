@@ -1,0 +1,318 @@
+package net.tfminecraft.musicalinstruments.studio;
+
+import net.tfminecraft.musicalinstruments.InstrumentPlugin;
+import net.tfminecraft.musicalinstruments.managers.InstrumentManager;
+import org.bukkit.Location;
+import org.bukkit.Server;
+import org.bukkit.SoundCategory;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.block.Jukebox;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.plugin.PluginManager;
+import org.bukkit.scheduler.BukkitScheduler;
+import org.bukkit.scheduler.BukkitTask;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+class StudioServiceTest {
+    @TempDir Path directory;
+    private InstrumentPlugin plugin;
+    private Server server;
+    private PluginManager pluginManager;
+    private Player player;
+    private PlayerInventory inventory;
+    private World world;
+    private DiscItems discs;
+    private StudioStore store;
+    private StudioService studio;
+    private BukkitTask task;
+    private Runnable tick;
+    private final UUID owner = UUID.randomUUID();
+
+    @BeforeEach
+    void setup() throws Exception {
+        plugin = mock(InstrumentPlugin.class);
+        server = mock(Server.class);
+        pluginManager = mock(PluginManager.class);
+        BukkitScheduler scheduler = mock(BukkitScheduler.class);
+        task = mock(BukkitTask.class);
+        player = mock(Player.class);
+        inventory = mock(PlayerInventory.class);
+        world = mock(World.class);
+        discs = mock(DiscItems.class);
+        store = spy(new StudioStore(directory));
+        InstrumentManager manager = mock(InstrumentManager.class);
+        when(plugin.getServer()).thenReturn(server);
+        when(plugin.getLogger()).thenReturn(Logger.getAnonymousLogger());
+        when(plugin.getManager()).thenReturn(manager);
+        when(manager.getInstrument(any())).thenReturn("lute");
+        when(server.getScheduler()).thenReturn(scheduler);
+        when(server.getPluginManager()).thenReturn(pluginManager);
+        when(server.getPlayer(owner)).thenReturn(player);
+        when(player.getUniqueId()).thenReturn(owner);
+        when(player.getName()).thenReturn("Musician");
+        when(player.getInventory()).thenReturn(inventory);
+        when(player.getLocation()).thenReturn(new Location(world, 0, 0, 0));
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(server.getWorld(world.getUID())).thenReturn(world);
+        when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        when(world.getPlayers()).thenReturn(List.of(player));
+        when(scheduler.runTaskTimer(eq(plugin), any(Runnable.class), eq(1L), eq(1L))).thenReturn(task);
+        studio = new StudioService(plugin, store, new StudioSettings(4, 40, 20, 60, 8, 32, 2, 0, 2), discs);
+        var callback = ArgumentCaptor.forClass(Runnable.class);
+        verify(scheduler).runTaskTimer(eq(plugin), callback.capture(), eq(1L), eq(1L));
+        tick = callback.getValue();
+    }
+
+    @AfterEach
+    void close() {
+        studio.close();
+    }
+
+    private Song song(Track... tracks) {
+        return new Song(UUID.randomUUID(), owner, "Musician", "Song", List.of(tracks));
+    }
+
+    private Track track(int slot, String sound) {
+        return new Track(slot, 10, 1, false, List.of(new Note(0, "lute", sound, 4, 1)));
+    }
+
+    @Test
+    void countInIgnoresNotesAndOverdubRetainsThePreviousTrackUntilKept() throws Exception {
+        Song original = song(track(1, "backing"), track(2, "old_take"));
+        studio.save(player, new Project(original, null, 100, false));
+        studio.record(player, 2);
+        studio.capture(player, "flute", "early", 4, 1);
+        tick.run();
+        studio.capture(player, "flute", "early", 4, 1);
+        tick.run();
+        verify(player).playSound(any(Location.class), eq("backing"), eq(SoundCategory.RECORDS), eq(4f), eq(1f));
+        verify(player, never()).playSound(any(Location.class), eq("old_take"), any(SoundCategory.class), anyFloat(), anyFloat());
+        studio.capture(player, "flute", "new_take", 2, 1.5f);
+        studio.stop(player);
+        Project pending = studio.requireProject(player);
+        assertEquals(original, pending.song());
+        assertEquals(1, pending.pending().notes().size());
+        assertEquals(0, pending.pending().notes().getFirst().tick());
+        studio.edit(player, pending.accept());
+        assertEquals("new_take", studio.requireProject(player).song().track(2).notes().getFirst().sound());
+    }
+
+    @Test
+    void previewsPlaySimultaneousTracksWithoutEmittingLivePerformanceEvents() throws Exception {
+        studio.save(player, new Project(song(track(1, "lute"), track(2, "flute")), null, 100, false));
+        studio.preview(player, false);
+        tick.run();
+        verify(player).playSound(any(Location.class), eq("lute"), eq(SoundCategory.RECORDS), eq(4f), eq(1f));
+        verify(player).playSound(any(Location.class), eq("flute"), eq(SoundCategory.RECORDS), eq(4f), eq(1f));
+        verifyNoInteractions(pluginManager);
+    }
+
+    @Test
+    void checkpointsAndShutdownRecoverAnUnacceptedTake() throws Exception {
+        studio.create(player, "Song", false);
+        studio.record(player, 1);
+        tick.run();
+        tick.run();
+        studio.capture(player, "lute", "first", 4, 1);
+        tick.run();
+        tick.run();
+        verify(store, timeout(3000).times(2)).save(any());
+        // Mockito observes the call at entry; await the atomically installed file contents.
+        long deadline = System.nanoTime() + 3_000_000_000L;
+        while (store.project(owner).orElseThrow().pending() == null && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertEquals("first", new StudioStore(directory).project(owner).orElseThrow().pending().notes().getFirst().sound());
+        studio.capture(player, "lute", "second", 4, 1);
+        studio.close();
+        Project saved = new StudioStore(directory).project(owner).orElseThrow();
+        assertEquals(2, saved.pending().notes().size());
+        assertTrue(saved.song().tracks().isEmpty());
+        verify(task).cancel();
+    }
+
+    @Test
+    void emptyTakeDoesNotReplaceASavedTrack() throws Exception {
+        Song original = song(track(1, "saved"));
+        studio.save(player, new Project(original, null, 100, false));
+        studio.record(player, 1);
+        studio.stop(player);
+        assertEquals(original, studio.requireProject(player).song());
+        assertNull(studio.requireProject(player).pending());
+    }
+
+    @Test
+    void anOlderBackgroundCheckpointCannotOverwriteTheFinalTake() throws Exception {
+        studio.create(player, "Song", false);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            if (Thread.currentThread().getName().equals("musical-instruments-checkpoints")) {
+                started.countDown();
+                if (!release.await(3, TimeUnit.SECONDS)) {
+                    throw new IOException("Test checkpoint timed out");
+                }
+            }
+            return invocation.callRealMethod();
+        }).when(store).save(any());
+        studio.record(player, 1);
+        tick.run();
+        tick.run();
+        studio.capture(player, "lute", "first", 4, 1);
+        tick.run();
+        tick.run();
+        assertTrue(started.await(3, TimeUnit.SECONDS));
+        studio.capture(player, "lute", "second", 4, 1);
+        CompletableFuture<Void> stopped = CompletableFuture.runAsync(() -> studio.stop(player));
+        release.countDown();
+        stopped.get(3, TimeUnit.SECONDS);
+        Project saved = new StudioStore(directory).project(owner).orElseThrow();
+        assertEquals(List.of("first", "second"), saved.pending().notes().stream().map(Note::sound).toList());
+    }
+
+    @Test
+    void noteLimitFinishesTheTakeWithoutOverwritingTheOldTrack() throws Exception {
+        Song original = song(track(1, "saved"));
+        studio.save(player, new Project(original, null, 100, false));
+        studio.record(player, 1);
+        tick.run();
+        tick.run();
+        for (int i = 0; i < 21; i++) {
+            studio.capture(player, "lute", "new", 4, 1);
+        }
+        Project project = studio.requireProject(player);
+        assertEquals(original, project.song());
+        assertEquals(20, project.pending().notes().size());
+        studio.requireIdle(player);
+    }
+
+    @Test
+    void maximumDurationFinishesAndPersistsTheTake() throws Exception {
+        studio.create(player, "Song", false);
+        studio.record(player, 1);
+        tick.run();
+        tick.run();
+        studio.capture(player, "lute", "sample", 4, 1);
+        for (int i = 0; i < 40; i++) {
+            tick.run();
+        }
+        Project project = studio.requireProject(player);
+        assertEquals(40, project.pending().lengthTicks());
+        studio.requireIdle(player);
+        assertEquals(project, store.project(owner).orElseThrow());
+    }
+
+    @Test
+    void failedPublicationPreservesThePhysicalBlankDisc() throws Exception {
+        studio.save(player, new Project(song(track(1, "sample")), null, 100, false));
+        ItemStack blank = mock(ItemStack.class);
+        when(inventory.getItemInMainHand()).thenReturn(blank);
+        when(blank.getAmount()).thenReturn(1);
+        when(discs.blank(blank)).thenReturn(true);
+        when(discs.disc(any())).thenReturn(mock(ItemStack.class));
+        doThrow(new IOException("Disk full")).when(store).publish(any());
+        assertThrows(IOException.class, () -> studio.publish(player));
+        verify(inventory, never()).setItemInMainHand(any());
+    }
+
+    @Test
+    void publicationAndCopiesReferenceAnImmutableEdition() throws Exception {
+        Song original = song(track(1, "original"));
+        studio.save(player, new Project(original, null, 100, false));
+        ItemStack blank = mock(ItemStack.class);
+        ItemStack published = mock(ItemStack.class);
+        when(inventory.getItemInMainHand()).thenReturn(blank);
+        when(blank.getAmount()).thenReturn(1);
+        when(discs.blank(blank)).thenReturn(true);
+        when(discs.disc(any())).thenReturn(published);
+        studio.publish(player);
+        var captured = ArgumentCaptor.forClass(Song.class);
+        verify(store).publish(captured.capture());
+        Song edition = captured.getValue();
+        studio.edit(player, new Project(original.replace(track(1, "changed")), null, 100, false));
+        when(inventory.getItemInOffHand()).thenReturn(published);
+        when(discs.songId(published)).thenReturn(edition.id());
+        studio.copy(player);
+        assertEquals("original", store.song(edition.id()).track(1).notes().getFirst().sound());
+        verify(inventory, times(2)).setItemInMainHand(published);
+    }
+
+    private Block jukebox(Song song, ItemStack disc) throws IOException {
+        store.publish(song);
+        Block block = mock(Block.class);
+        Jukebox box = mock(Jukebox.class);
+        when(block.getWorld()).thenReturn(world);
+        when(block.getState()).thenReturn(box);
+        when(block.getLocation()).thenReturn(new Location(world, 0, 0, 0));
+        when(world.getBlockAt(0, 0, 0)).thenReturn(block);
+        when(box.update(false, false)).thenReturn(true);
+        when(box.getRecord()).thenReturn(disc);
+        when(disc.asOne()).thenReturn(disc);
+        when(discs.songId(disc)).thenReturn(song.id());
+        return block;
+    }
+
+    @Test
+    void jukeboxAppliesItsSnapshotAndPlaysEveryTrackOnlyToNearbyListeners() throws Exception {
+        Song song = song(track(1, "lute"), track(2, "flute"));
+        ItemStack disc = mock(ItemStack.class);
+        Block block = jukebox(song, disc);
+        Player farAway = mock(Player.class);
+        when(farAway.getLocation()).thenReturn(new Location(world, 100, 0, 0));
+        when(world.getPlayers()).thenReturn(List.of(player, farAway));
+        studio.play(block, disc);
+        var order = inOrder((Jukebox) block.getState());
+        order.verify((Jukebox) block.getState()).setRecord(disc);
+        order.verify((Jukebox) block.getState()).update(false, false);
+        order.verify((Jukebox) block.getState()).stopPlaying();
+        tick.run();
+        verify(player).playSound(eq(new Location(world, 0.5, 0.5, 0.5)), eq("lute"), eq(SoundCategory.RECORDS), eq(4f), eq(1f));
+        verify(player).playSound(any(Location.class), eq("flute"), eq(SoundCategory.RECORDS), eq(4f), eq(1f));
+        verify(farAway, never()).playSound(any(Location.class), anyString(), any(SoundCategory.class), anyFloat(), anyFloat());
+        verifyNoInteractions(pluginManager);
+    }
+
+    @Test
+    void ejectionAndChunkUnloadingCancelFutureNotes() throws Exception {
+        Song song = song(new Track(1, 10, 1, false, List.of(new Note(3, "lute", "late", 4, 1))));
+        ItemStack disc = mock(ItemStack.class);
+        Block block = jukebox(song, disc);
+        studio.play(block, disc);
+        studio.stop(block);
+        for (int i = 0; i < 5; i++) tick.run();
+        studio.play(block, disc);
+        studio.unload(world.getUID(), 0, 0);
+        for (int i = 0; i < 5; i++) tick.run();
+        verify(player, never()).playSound(any(Location.class), eq("late"), any(SoundCategory.class), anyFloat(), anyFloat());
+    }
+
+    @Test
+    void missingEditionDoesNotAlterTheJukebox() {
+        Block block = mock(Block.class);
+        when(block.getWorld()).thenReturn(world);
+        ItemStack disc = mock(ItemStack.class);
+        when(discs.songId(disc)).thenReturn(UUID.randomUUID());
+        assertThrows(IOException.class, () -> studio.play(block, disc));
+        verify(block, never()).getState();
+    }
+}

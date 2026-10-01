@@ -1,0 +1,13 @@
+# Separate from config.yml, whose root entries remain instrument definitions.
+# Restart the plugin/server after changing these settings.
+max-tracks: 4
+max-duration-seconds: 180
+max-notes-per-track: 1500
+max-notes-per-song: 6000
+max-sessions: 32
+jukebox-radius: 32
+count-in-seconds: 3
+sample-tail-seconds: 3
+# Background checkpoints run at this interval. A hard crash loses work since
+# the last completed checkpoint; stop/disconnect/shutdown save the complete take.
+checkpoint-ticks: 200

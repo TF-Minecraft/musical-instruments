@@ -73,6 +73,9 @@ public class InstrumentListener implements Listener {
         );
         
         plugin.recordInstrumentPlay(instrument);
+        if (plugin.getStudio() != null) {
+            plugin.getStudio().capture(player, instrument, soundKey, (float) volume, (float) pitch);
+        }
         Bukkit.getPluginManager().callEvent(new InstrumentPlayEvent(player, instrument, soundKey));
 
         // Spawn particle effect

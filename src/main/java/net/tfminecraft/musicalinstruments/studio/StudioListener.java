@@ -1,0 +1,107 @@
+package net.tfminecraft.musicalinstruments.studio;
+
+import org.bukkit.Material;
+import org.bukkit.block.Jukebox;
+import org.bukkit.event.Event;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.world.ChunkUnloadEvent;
+import org.bukkit.event.world.WorldUnloadEvent;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
+
+import java.io.IOException;
+
+public final class StudioListener implements Listener {
+    private final StudioService studio;
+    private final StudioMenu menu;
+
+    public StudioListener(StudioService studio, StudioMenu menu) {
+        this.studio = studio;
+        this.menu = menu;
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void interact(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null
+                || event.useInteractedBlock() == Event.Result.DENY
+                || !(event.getClickedBlock().getState() instanceof Jukebox box)) {
+            return;
+        }
+        var player = event.getPlayer();
+        ItemStack inserted = box.getRecord();
+        ItemStack held = event.getItem();
+        boolean mainHand = event.getHand() == EquipmentSlot.HAND;
+        boolean itemAllowed = event.useItemInHand() != Event.Result.DENY;
+        try {
+            if (studio.discs().custom(inserted)) {
+                event.setCancelled(true);
+                if (mainHand) {
+                    studio.stop(event.getClickedBlock());
+                    box.eject();
+                }
+            } else if (!box.hasRecord() && mainHand && player.isSneaking()
+                    && player.hasPermission("instruments.record")) {
+                event.setCancelled(true);
+                menu.open(player, event.getClickedBlock());
+            } else if (!box.hasRecord() && studio.discs().custom(held)) {
+                event.setCancelled(true);
+                if (studio.discs().blank(held)) {
+                    player.sendMessage("This disc is blank. Sneak-right-click an empty jukebox to open the studio.");
+                } else if (!player.hasPermission("instruments.play")) {
+                    player.sendMessage("You don't have permission to play recording discs.");
+                } else if (itemAllowed) {
+                    studio.play(event.getClickedBlock(), held);
+                    // Always move exactly one physical disc, including in creative mode.
+                    ItemStack remaining = held.clone();
+                    remaining.setAmount(held.getAmount() - 1);
+                    if (mainHand) {
+                        player.getInventory().setItemInMainHand(remaining.getAmount() == 0 ? new ItemStack(Material.AIR) : remaining);
+                    } else {
+                        player.getInventory().setItemInOffHand(remaining.getAmount() == 0 ? new ItemStack(Material.AIR) : remaining);
+                    }
+                }
+            }
+        } catch (IllegalArgumentException ex) {
+            player.sendMessage(ex.getMessage());
+        } catch (IOException ex) {
+            studio.failure(player, ex);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void breakBlock(BlockBreakEvent event) {
+        studio.stop(event.getBlock());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void hopper(InventoryMoveItemEvent event) {
+        // Custom editions require our insertion lifecycle; vanilla discs retain hopper behavior.
+        if (studio.discs().custom(event.getItem()) && event.getDestination().getHolder() instanceof Jukebox) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void quit(PlayerQuitEvent event) {
+        studio.quit(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void unload(ChunkUnloadEvent event) {
+        studio.unload(event.getWorld().getUID(), event.getChunk().getX(), event.getChunk().getZ());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void unloadWorld(WorldUnloadEvent event) {
+        for (var chunk : event.getWorld().getLoadedChunks()) {
+            studio.unload(event.getWorld().getUID(), chunk.getX(), chunk.getZ());
+        }
+    }
+}

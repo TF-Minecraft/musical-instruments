@@ -8,6 +8,9 @@ Sounds play at the performer's location for nearby listeners, while floating not
 
 ## Features
 
+- **Multitrack recording** — record successive takes while hearing the other tracks, preview the mix, and keep or discard each take.
+- **Player-made records** — publish immutable song editions onto blank discs, copy them, and play them from ordinary jukeboxes.
+- **Recording station** — sneak-right-click an empty jukebox to manage tracks, preview, and publish through an inventory menu.
 - **Live hotbar performance** — changing hotbar slots triggers the instrument's notes immediately.
 - **Alternate notes and chords** — sneaking opens a second set of sounds for the same instrument.
 - **Repeatable notes** — the selected slot resets after a note so players can play it again.
@@ -31,5 +34,11 @@ Created by [Justinas Launikonis](https://github.com/JustinasLa).
 ## Documentation
 
 [Project documentation](https://github.com/TF-Minecraft/Docs/blob/main/projects/MusicalInstruments/README.md)
+
+Start with `/music new <title>`, hold an instrument in your off-hand, and use
+`/music record 1`. After `/music stop`, listen with `/music preview take` and
+accept with `/music keep`. Repeat for the other tracks. Convert an ordinary
+music disc with `/music blank`, then hold it in your main hand and use
+`/music publish`. `/music help` lists the recording commands.
 
 Technical documentation is maintained in [TF-Minecraft/Docs](https://github.com/TF-Minecraft/Docs).
