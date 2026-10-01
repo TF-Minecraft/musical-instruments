@@ -31,6 +31,7 @@ public class InstrumentPlugin extends JavaPlugin {
     private ItemResolver itemResolver;
     private InstrumentManager manager;
     private StudioService studio;
+    private StudioMenu studioMenu;
 
     // Play counts since the last bStats submission.
     // Written from the main thread (listener), read and reset from the bStats submit thread every 30 minutes.
@@ -62,6 +63,7 @@ public class InstrumentPlugin extends JavaPlugin {
         try {
             studio = new StudioService(this);
             StudioMenu menu = new StudioMenu(this, studio);
+            studioMenu = menu;
             StudioCommand musicCommand = new StudioCommand(studio, menu);
             getCommand("music").setExecutor(musicCommand);
             getCommand("music").setTabCompleter(musicCommand);
@@ -110,6 +112,9 @@ public class InstrumentPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (studioMenu != null) {
+            studioMenu.close();
+        }
         if (studio != null) {
             studio.close();
         }

@@ -10,7 +10,8 @@ Sounds play at the performer's location for nearby listeners, while floating not
 
 - **Multitrack recording** — record successive takes while hearing the other tracks, preview the mix, and keep or discard each take.
 - **Player-made records** — publish immutable song editions onto blank discs, copy them, and play them from ordinary jukeboxes.
-- **Recording station** — sneak-right-click an empty jukebox to manage tracks, preview, and publish through an inventory menu.
+- **Visual recording studio** — sneak-right-click an empty jukebox for track cards, volume and mute controls, take review, and publishing from your inventory.
+- **Song settings form** — name your song, choose tempo with a slider, and toggle the private metronome without commands.
 - **Live hotbar performance** — changing hotbar slots triggers the instrument's notes immediately.
 - **Alternate notes and chords** — sneaking opens a second set of sounds for the same instrument.
 - **Repeatable notes** — the selected slot resets after a note so players can play it again.
@@ -35,7 +36,13 @@ Created by [Justinas Launikonis](https://github.com/JustinasLa).
 
 [Project documentation](https://github.com/TF-Minecraft/Docs/blob/main/projects/MusicalInstruments/README.md)
 
-Start with `/music new <title>`, hold an instrument in your off-hand, and use
+Sneak-right-click an empty jukebox, choose **Song settings**, and hold an instrument
+in your off-hand. Click a track to start recording; reopen the studio to **Stop**,
+**Listen to new take**, and **Keep take**. Add other tracks, mix their volume and
+mute controls, then **Prepare a blank disc** and **Publish song** using a music
+disc in your inventory. A book in the menu explains the steps.
+
+Commands are also available: start with `/music new <title>` and use
 `/music record 1`. After `/music stop`, listen with `/music preview take` and
 accept with `/music keep`. Repeat for the other tracks. Convert an ordinary
 music disc with `/music blank`, then hold it in your main hand and use

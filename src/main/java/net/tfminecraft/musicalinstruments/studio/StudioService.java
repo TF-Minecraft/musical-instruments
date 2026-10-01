@@ -9,6 +9,9 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
@@ -75,6 +78,20 @@ public final class StudioService {
 
     public DiscItems discs() { return discs; }
     public StudioSettings settings() { return settings; }
+
+    public record Activity(int track, int seconds, int notes, int countdown, boolean previewing) {
+        public boolean recording() { return track > 0; }
+    }
+
+    public Activity activity(Player player) {
+        Capture capture = recordings.get(player.getUniqueId());
+        if (capture == null) {
+            return new Activity(0, 0, 0, 0, previews.containsKey(player.getUniqueId()));
+        }
+        int countdown = (int) Math.max(0, (capture.start - clock + 19) / 20);
+        return new Activity(capture.slot, (int) Math.max(0, clock - capture.start) / 20,
+                capture.notes.size(), countdown, false);
+    }
 
     public Project project(Player player) throws IOException {
         Project project = projects.get(player.getUniqueId());
@@ -200,9 +217,7 @@ public final class StudioService {
 
     public void makeBlank(Player player) {
         ItemStack held = player.getInventory().getItemInMainHand();
-        if (!discs.musicDisc(held) || discs.custom(held) || held.getAmount() != 1
-                || !held.getItemMeta().getPersistentDataContainer().isEmpty()
-                || held.getItemMeta().hasCustomModelData()) {
+        if (!ordinaryDisc(held) || held.getAmount() != 1) {
             throw new IllegalArgumentException("Hold one ordinary music disc in your main hand");
         }
         player.getInventory().setItemInMainHand(discs.blankDisc());
@@ -219,6 +234,12 @@ public final class StudioService {
     public void publish(Player player) throws IOException {
         requireIdle(player);
         requireBlank(player);
+        Song edition = publishEdition(player);
+        player.getInventory().setItemInMainHand(discs.disc(edition));
+        player.sendMessage("Published '" + edition.title() + "'. Existing discs will keep this edition.");
+    }
+
+    private Song publishEdition(Player player) throws IOException {
         Project project = requireProject(player);
         if (project.pending() != null) {
             throw new IllegalArgumentException("Keep or discard your pending take first");
@@ -227,11 +248,9 @@ public final class StudioService {
             throw new IllegalArgumentException("The mix needs at least one audible note");
         }
         Song edition = project.song().edition();
-        ItemStack disc = discs.disc(edition);
         store.publish(edition); // No item is consumed when publication fails.
         editions.put(edition.id(), edition);
-        player.getInventory().setItemInMainHand(disc);
-        player.sendMessage("Published '" + edition.title() + "'. Existing discs will keep this edition.");
+        return edition;
     }
 
     public void copy(Player player) throws IOException {
@@ -242,6 +261,78 @@ public final class StudioService {
         }
         player.getInventory().setItemInMainHand(discs.disc(edition(id)));
         player.sendMessage("Copied the recorded disc using your blank disc.");
+    }
+
+    public boolean ordinaryDisc(ItemStack item) {
+        return discs.musicDisc(item) && !discs.custom(item)
+                && item.getItemMeta().getPersistentDataContainer().isEmpty()
+                && !item.getItemMeta().hasCustomModelData();
+    }
+
+    public int blankDiscs(Player player) {
+        int count = 0;
+        for (ItemStack item : player.getInventory().getStorageContents()) {
+            if (discs.blank(item)) count += item.getAmount();
+        }
+        return count;
+    }
+
+    public void prepareBlankFromInventory(Player player) {
+        DiscSlot slot = discSlot(player, false);
+        slot.replace(discs.blankDisc());
+        player.sendMessage("A music disc from your inventory is now a blank recording disc.");
+    }
+
+    public void publishFromInventory(Player player) throws IOException {
+        requireIdle(player);
+        DiscSlot slot = discSlot(player, true); // Check space before writing an edition or consuming a disc.
+        Song edition = publishEdition(player);
+        slot.replace(discs.disc(edition));
+        player.sendMessage("Published '" + edition.title() + "' on a blank disc from your inventory.");
+    }
+
+    public void copyFromInventory(Player player) throws IOException {
+        if (!player.hasPermission("instruments.copy")) {
+            throw new IllegalArgumentException("You don't have permission to copy recording discs");
+        }
+        UUID id = discs.songId(player.getInventory().getItemInOffHand());
+        if (id == null) {
+            throw new IllegalArgumentException("Hold the recorded disc to copy in your off-hand");
+        }
+        DiscSlot slot = discSlot(player, true);
+        slot.replace(discs.disc(edition(id)));
+        player.sendMessage("Copied the recorded disc using a blank disc from your inventory.");
+    }
+
+    private DiscSlot discSlot(Player player, boolean blank) {
+        PlayerInventory inventory = player.getInventory();
+        ItemStack[] items = inventory.getStorageContents();
+        boolean needsSpace = false;
+        for (int index = 0; index < items.length; index++) {
+            ItemStack item = items[index];
+            if (item == null || item.getAmount() < 1 || !(blank ? discs.blank(item) : ordinaryDisc(item))) continue;
+            if (item.getAmount() == 1) return new DiscSlot(inventory, index, index, item);
+            for (int output = 0; output < items.length; output++) {
+                if (items[output] == null || items[output].getType().isAir()) {
+                    return new DiscSlot(inventory, index, output, item);
+                }
+            }
+            needsSpace = true;
+        }
+        if (needsSpace) throw new IllegalArgumentException("Leave one free inventory slot to separate a disc from this stack");
+        throw new IllegalArgumentException(blank ? "Put a blank recording disc in your inventory first"
+                : "Put an ordinary music disc in your inventory first");
+    }
+
+    private record DiscSlot(PlayerInventory inventory, int input, int output, ItemStack original) {
+        private void replace(ItemStack result) {
+            if (input != output) {
+                ItemStack remainder = original.clone();
+                remainder.setAmount(original.getAmount() - 1);
+                inventory.setItem(input, remainder);
+            }
+            inventory.setItem(output, result);
+        }
     }
 
     private Song edition(UUID id) throws IOException {
@@ -306,6 +397,12 @@ public final class StudioService {
             }
             if (elapsed == 0) {
                 player.sendMessage("Recording track " + capture.slot + " now.");
+            }
+            if (elapsed % 10 == 0) {
+                int seconds = (int) elapsed / 20;
+                String time = String.format(java.util.Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60);
+                player.sendActionBar(Component.text("\u25cf Track " + capture.slot + "  |  " + time
+                        + "  |  " + capture.notes.size() + " notes", NamedTextColor.RED));
             }
             if (elapsed >= settings.durationTicks()) {
                 finish(player, capture, "Maximum duration reached");
@@ -395,6 +492,7 @@ public final class StudioService {
 
     private void finish(Player player, Capture capture, String reason) {
         recordings.remove(player.getUniqueId());
+        player.sendActionBar(Component.empty());
         if (capture.notes.isEmpty()) {
             player.sendMessage(reason + ". No notes captured; the previous track was preserved.");
             return;

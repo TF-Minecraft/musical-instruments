@@ -3,6 +3,7 @@ package net.tfminecraft.musicalinstruments.studio;
 import net.tfminecraft.musicalinstruments.InstrumentPlugin;
 import net.tfminecraft.musicalinstruments.managers.InstrumentManager;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.Server;
 import org.bukkit.SoundCategory;
 import org.bukkit.World;
@@ -233,6 +234,74 @@ class StudioServiceTest {
         doThrow(new IOException("Disk full")).when(store).publish(any());
         assertThrows(IOException.class, () -> studio.publish(player));
         verify(inventory, never()).setItemInMainHand(any());
+    }
+
+    private ItemStack inventoryItem(Material type, int amount, boolean blank) {
+        ItemStack item = mock(ItemStack.class);
+        Material material = mock(Material.class);
+        when(material.isAir()).thenReturn(false);
+        when(item.getType()).thenReturn(material);
+        when(item.getAmount()).thenReturn(amount);
+        when(discs.blank(item)).thenReturn(blank);
+        return item;
+    }
+
+    @Test
+    void menuPublicationConsumesOneInventoryDiscWithoutChangingTheHeldInstrument() throws Exception {
+        studio.save(player, new Project(song(track(1, "sample")), null, 100, false));
+        ItemStack blank = inventoryItem(Material.MUSIC_DISC_13, 3, true);
+        ItemStack remainder = mock(ItemStack.class);
+        ItemStack published = mock(ItemStack.class);
+        when(blank.clone()).thenReturn(remainder);
+        when(discs.disc(any())).thenReturn(published);
+        when(inventory.getStorageContents()).thenReturn(new ItemStack[]{blank, null});
+        studio.publishFromInventory(player);
+        verify(remainder).setAmount(2);
+        verify(inventory).setItem(0, remainder);
+        verify(inventory).setItem(1, published);
+        verify(inventory, never()).setItemInMainHand(any());
+        assertEquals(3, studio.blankDiscs(player));
+    }
+
+    @Test
+    void fullInventoryPreventsPublicationBeforeWritingOrConsumingADisc() throws Exception {
+        studio.save(player, new Project(song(track(1, "sample")), null, 100, false));
+        ItemStack blank = inventoryItem(Material.MUSIC_DISC_13, 2, true);
+        ItemStack stone = inventoryItem(Material.STONE, 64, false);
+        when(inventory.getStorageContents()).thenReturn(new ItemStack[]{blank, stone});
+        assertThrows(IllegalArgumentException.class, () -> studio.publishFromInventory(player));
+        verify(store, never()).publish(any());
+        verify(inventory, never()).setItem(anyInt(), any());
+    }
+
+    @Test
+    void fullInventoryCanUseALaterSingleDiscRatherThanSplitTheFirstStack() throws Exception {
+        studio.save(player, new Project(song(track(1, "sample")), null, 100, false));
+        ItemStack stack = inventoryItem(Material.MUSIC_DISC_13, 2, true);
+        ItemStack single = inventoryItem(Material.MUSIC_DISC_13, 1, true);
+        ItemStack published = mock(ItemStack.class);
+        when(discs.disc(any())).thenReturn(published);
+        when(inventory.getStorageContents()).thenReturn(new ItemStack[]{stack, single});
+        studio.publishFromInventory(player);
+        verify(inventory).setItem(1, published);
+        verify(inventory, never()).setItem(eq(0), any());
+    }
+
+    @Test
+    void failedMenuPublicationPreservesAllInventoryItems() throws Exception {
+        studio.save(player, new Project(song(track(1, "sample")), null, 100, false));
+        ItemStack blank = inventoryItem(Material.MUSIC_DISC_13, 1, true);
+        when(inventory.getStorageContents()).thenReturn(new ItemStack[]{blank});
+        doThrow(new IOException("Disk full")).when(store).publish(any());
+        assertThrows(IOException.class, () -> studio.publishFromInventory(player));
+        verify(inventory, never()).setItem(anyInt(), any());
+    }
+
+    @Test
+    void menuCopyRespectsItsPermissionBeforeInspectingOrConsumingDiscs() {
+        when(player.hasPermission("instruments.copy")).thenReturn(false);
+        assertThrows(IllegalArgumentException.class, () -> studio.copyFromInventory(player));
+        verifyNoInteractions(inventory);
     }
 
     @Test
