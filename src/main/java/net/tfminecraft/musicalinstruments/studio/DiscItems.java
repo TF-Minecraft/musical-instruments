@@ -57,6 +57,7 @@ public final class DiscItems {
         meta.displayName(text("Blank recording disc", NamedTextColor.YELLOW));
         meta.lore(List.of(text("Use /music publish or /music copy", NamedTextColor.GRAY)));
         item.setItemMeta(meta);
+        StudioIcons.hideDiscDescription(item);
         return item;
     }
 
@@ -74,6 +75,7 @@ public final class DiscItems {
                 text(song.tracks().size() + " tracks | " + ((song.lengthTicks() + 19) / 20) + " seconds", NamedTextColor.GRAY),
                 text("Edition: " + song.id(), NamedTextColor.DARK_GRAY)));
         item.setItemMeta(meta);
+        StudioIcons.hideDiscDescription(item);
         return item;
     }
 
