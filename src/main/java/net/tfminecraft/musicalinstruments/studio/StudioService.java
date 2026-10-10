@@ -39,6 +39,7 @@ public final class StudioService {
     private final InstrumentManager manager;
     private final StudioStore store;
     private final StudioSettings settings;
+    private final StudioStation station;
     private final DiscItems discs;
     private final Map<UUID, Project> projects = new HashMap<>();
     private final Map<UUID, Capture> recordings = new HashMap<>();
@@ -56,11 +57,15 @@ public final class StudioService {
     private long clock;
 
     public StudioService(InstrumentPlugin plugin, InstrumentManager manager) throws IOException {
-        this(plugin, manager, new StudioStore(plugin.getDataFolder().toPath().resolve("studio")),
-                loadSettings(plugin), new DiscItems(plugin));
+        this(plugin, manager, loadSettings(plugin));
     }
 
-    private static StudioSettings loadSettings(InstrumentPlugin plugin) throws IOException {
+    private StudioService(InstrumentPlugin plugin, InstrumentManager manager, YamlConfiguration yaml) throws IOException {
+        this(plugin, manager, new StudioStore(plugin.getDataFolder().toPath().resolve("studio")), StudioSettings.read(yaml),
+                StudioStation.parse(yaml.getString("station", ""), plugin.getLogger()), new DiscItems(plugin));
+    }
+
+    private static YamlConfiguration loadSettings(InstrumentPlugin plugin) throws IOException {
         if (!new File(plugin.getDataFolder(), "studio.yml").exists()) {
             plugin.saveResource("studio.yml", false);
         }
@@ -70,13 +75,15 @@ public final class StudioService {
         } catch (InvalidConfigurationException ex) {
             throw new IOException("Invalid studio.yml", ex);
         }
-        return StudioSettings.read(yaml);
+        return yaml;
     }
 
-    StudioService(InstrumentPlugin plugin, InstrumentManager manager, StudioStore store, StudioSettings settings, DiscItems discs) {
+    StudioService(InstrumentPlugin plugin, InstrumentManager manager, StudioStore store, StudioSettings settings,
+                  StudioStation station, DiscItems discs) {
         this.plugin = plugin;
         this.manager = manager;
         this.settings = settings;
+        this.station = station;
         this.store = store;
         this.discs = discs;
         task = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L);
@@ -84,6 +91,7 @@ public final class StudioService {
 
     public DiscItems discs() { return discs; }
     public StudioSettings settings() { return settings; }
+    public StudioStation station() { return station; }
 
     public record Activity(int track, int seconds, int notes, int countdown, boolean previewing) {
         public boolean recording() { return track > 0; }
@@ -201,13 +209,16 @@ public final class StudioService {
         if (slot < 1 || slot > settings.tracks()) {
             throw new IllegalArgumentException("Track must be between 1 and " + settings.tracks());
         }
-        if (manager.getInstrument(player.getInventory().getItemInOffHand()) == null) {
-            throw new IllegalArgumentException("Hold an instrument in your off-hand");
+        // Off-hand instruments play with the hotbar; a held instrument opens the on-screen keyboard.
+        if (manager.getInstrument(player.getInventory().getItemInOffHand()) == null
+                && manager.getInstrument(player.getInventory().getItemInMainHand()) == null) {
+            throw new IllegalArgumentException("Hold an instrument in your hand or off-hand");
         }
         previews.remove(player.getUniqueId());
         capacity();
         recordings.put(player.getUniqueId(), new Capture(project, slot, clock + settings.countInTicks()));
-        player.sendMessage("Recording starts in " + settings.countInTicks() / 20 + " seconds. /music stop ends the take.");
+        player.sendMessage("Recording starts in " + settings.countInTicks() / 20 + " seconds. Play with the hotbar, "
+                + "or right-click your instrument for the keyboard. /music stop ends the take.");
     }
 
     public void capture(Player player, String instrument, String sound, float volume, float pitch) {

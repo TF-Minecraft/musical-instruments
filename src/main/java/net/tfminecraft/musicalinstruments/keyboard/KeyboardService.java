@@ -244,6 +244,8 @@ public final class KeyboardService implements Listener {
         Location location = player.getLocation();
         for (NoteMap.Note note : notes) {
             player.getWorld().playSound(location, note.sound(), SoundCategory.RECORDS, volume, note.pitch());
+            // Every note of a chord is recorded, so playback sounds like what was played.
+            this.plugin.captureNote(player, session.instrument, note.sound(), volume, note.pitch());
         }
         // One play per click, also for a chord.
         this.plugin.recordInstrumentPlay(session.instrument);

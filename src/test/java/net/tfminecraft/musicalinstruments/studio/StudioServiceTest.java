@@ -47,6 +47,7 @@ class StudioServiceTest {
     private StudioService studio;
     private BukkitTask task;
     private Runnable tick;
+    private InstrumentManager manager;
     private final UUID owner = UUID.randomUUID();
 
     @BeforeEach
@@ -61,7 +62,7 @@ class StudioServiceTest {
         world = mock(World.class);
         discs = mock(DiscItems.class);
         store = spy(new StudioStore(directory));
-        InstrumentManager manager = mock(InstrumentManager.class);
+        manager = mock(InstrumentManager.class);
         when(plugin.getServer()).thenReturn(server);
         when(plugin.getLogger()).thenReturn(Logger.getAnonymousLogger());
         when(manager.getInstrument(any())).thenReturn("lute");
@@ -77,7 +78,8 @@ class StudioServiceTest {
         when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         when(world.getPlayers()).thenReturn(List.of(player));
         when(scheduler.runTaskTimer(eq(plugin), any(Runnable.class), eq(1L), eq(1L))).thenReturn(task);
-        studio = new StudioService(plugin, manager, store, new StudioSettings(4, 40, 20, 60, 8, 32, 2, 0, 2), discs);
+        studio = new StudioService(plugin, manager, store, new StudioSettings(4, 40, 20, 60, 8, 32, 2, 0, 2),
+                StudioStation.none(), discs);
         var callback = ArgumentCaptor.forClass(Runnable.class);
         verify(scheduler).runTaskTimer(eq(plugin), callback.capture(), eq(1L), eq(1L));
         tick = callback.getValue();
@@ -548,4 +550,21 @@ class StudioServiceTest {
         verify(box, never()).stopPlaying();
     }
 
+
+    @Test
+    void takesNeedAnInstrumentInEitherHand() throws Exception {
+        ItemStack offHand = mock(ItemStack.class);
+        ItemStack mainHand = mock(ItemStack.class);
+        when(inventory.getItemInOffHand()).thenReturn(offHand);
+        when(inventory.getItemInMainHand()).thenReturn(mainHand);
+        when(manager.getInstrument(any())).thenReturn(null);
+        studio.save(player, new Project(song(), null, 100, false));
+        var error = assertThrows(IllegalArgumentException.class, () -> studio.record(player, 1));
+        assertEquals("Hold an instrument in your hand or off-hand", error.getMessage());
+
+        // A held instrument plays through the on-screen keyboard.
+        when(manager.getInstrument(mainHand)).thenReturn("lute");
+        studio.record(player, 1);
+        assertTrue(studio.activity(player).recording());
+    }
 }

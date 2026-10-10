@@ -155,7 +155,7 @@ public final class StudioDialogs {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (!target.isOnline()) return;
                 try {
-                    Block block = StudioMenu.requireStation(target, station);
+                    Block block = studio.station().require(target, station);
                     response.apply(target, view);
                     destination.open(target, block);
                 } catch (IllegalArgumentException ex) {

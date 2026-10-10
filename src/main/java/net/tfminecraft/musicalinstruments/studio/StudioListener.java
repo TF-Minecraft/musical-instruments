@@ -1,7 +1,9 @@
 package net.tfminecraft.musicalinstruments.studio;
 
 import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.block.Jukebox;
+import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -9,6 +11,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
@@ -64,6 +67,47 @@ public final class StudioListener implements Listener {
                     }
                 }
             }
+        } catch (IllegalArgumentException ex) {
+            player.sendMessage(ex.getMessage());
+        } catch (IOException ex) {
+            studio.failure(player, ex);
+        }
+    }
+
+    // Before the instrument keyboard (HIGHEST), which skips clicks whose item use is denied.
+    // Cancelled clicks still open the studio: ItemsAdder cancels clicks on its own furniture,
+    // and the studio only shows the player's own projects.
+    @EventHandler(priority = EventPriority.HIGH)
+    public void station(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || keepsVanilla(event.getPlayer())
+                || !studio.station().matches(event.getClickedBlock())) {
+            return;
+        }
+        event.setCancelled(true);
+        if (event.getHand() == EquipmentSlot.HAND) {
+            openStation(event.getPlayer(), event.getClickedBlock());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void stationFurniture(PlayerInteractEntityEvent event) {
+        if (keepsVanilla(event.getPlayer()) || !studio.station().matches(event.getRightClicked())) {
+            return;
+        }
+        event.setCancelled(true);
+        if (event.getHand() == EquipmentSlot.HAND) {
+            openStation(event.getPlayer(), event.getRightClicked().getLocation().getBlock());
+        }
+    }
+
+    // Sneaking with an item keeps vanilla behaviour, such as placing a block against the station.
+    private static boolean keepsVanilla(Player player) {
+        return player.isSneaking() && !player.getInventory().getItemInMainHand().getType().isAir();
+    }
+
+    private void openStation(Player player, Block station) {
+        try {
+            menu.open(player, station);
         } catch (IllegalArgumentException ex) {
             player.sendMessage(ex.getMessage());
         } catch (IOException ex) {

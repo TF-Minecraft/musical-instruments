@@ -16,10 +16,10 @@ commands:
 
 permissions:
   instruments.studio:
-    description: Open the recording studio by command without a physical station (staff)
+    description: Open the recording studio by command without a recording station (staff)
     default: op
   instruments.record:
-    description: Create projects, record tracks, prepare blank discs and publish editions
+    description: Use recording stations, create projects, record tracks and publish discs
     default: true
   instruments.play:
     description: Play recorded discs in jukeboxes

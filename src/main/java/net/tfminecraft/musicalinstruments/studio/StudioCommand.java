@@ -36,13 +36,13 @@ public final class StudioCommand implements CommandExecutor, TabCompleter {
         }
         try {
             if (action.equals("studio") && !player.hasPermission("instruments.studio")) {
-                throw new IllegalArgumentException("Opening the studio by command is reserved for staff");
+                throw new IllegalArgumentException("Right-click a recording station to open the studio. Opening it by command is reserved for staff");
             }
             switch (action) {
                 case "new" -> {
                     need(args, 2, "new <title>");
                     studio.create(player, title(args), false);
-                    player.sendMessage("Project created. Hold an instrument in your off-hand and use /music record 1.");
+                    player.sendMessage("Project created. Hold an instrument and use /music record 1.");
                 }
                 case "title" -> {
                     need(args, 2, "title <title>");

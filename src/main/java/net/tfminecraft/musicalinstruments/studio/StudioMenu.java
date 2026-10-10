@@ -7,7 +7,6 @@ import net.tfminecraft.musicalinstruments.InstrumentPlugin;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
-import org.bukkit.block.Jukebox;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -48,32 +47,11 @@ public final class StudioMenu implements Listener {
         refresher = plugin.getServer().getScheduler().runTaskTimer(plugin, this::refresh, 10L, 10L);
     }
 
-    static void requireStation(Player player, Block station) {
-        if (!player.hasPermission("instruments.record")) throw new IllegalArgumentException("You don't have permission to use the recording studio");
-        if (station == null && player.hasPermission("instruments.studio")) return;
-        if (station == null || !station.getWorld().equals(player.getWorld())
-                || station.getLocation().distanceSquared(player.getLocation()) > 36
-                || !(station.getState() instanceof Jukebox box) || box.hasRecord()) {
-            throw new IllegalArgumentException("Use an empty jukebox within 5 blocks as your recording station");
-        }
-    }
-
-    static Block requireStation(Player player, Location location) {
-        if (location == null) { requireStation(player, (Block) null); return null; }
-        if (!player.getWorld().equals(location.getWorld()) || location.distanceSquared(player.getLocation()) > 36
-                || !player.getWorld().isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) {
-            throw new IllegalArgumentException("Stay near your recording station to use its controls");
-        }
-        Block station = location.getBlock();
-        requireStation(player, station);
-        return station;
-    }
-
     public void open(Player player, Block station) throws IOException { open(player, station, Screen.LIBRARY, 0); }
     public void openProject(Player player, Block station) throws IOException { open(player, station, Screen.EDITOR, 0); }
 
     private void open(Player player, Block station, Screen screen, int page) throws IOException {
-        requireStation(player, station);
+        studio.station().require(player, station);
         UUID projectId = screen == Screen.LIBRARY ? null : studio.requireProject(player).song().id();
         Holder holder = new Holder(player.getUniqueId(), station == null ? null : station.getLocation(), screen, page, projectId);
         holder.inventory = plugin.getServer().createInventory(holder, screen == Screen.SETTINGS ? 27 : 54,
@@ -169,7 +147,7 @@ public final class StudioMenu implements Listener {
         }
         if (holder.page > 0) inventoryItem(holder, 45, Material.ARROW, "Previous tracks", NamedTextColor.AQUA);
         inventoryItem(holder, 49, Material.WRITABLE_BOOK, "Recording guide", NamedTextColor.AQUA,
-                "Each row controls one track.", "Hold your instrument in your off-hand and click Record.",
+                "Each row controls one track.", "Hold your instrument and click Record.", "Off-hand: hotbar notes. Hand: right-click for the keyboard.",
                 "Reopen your project to stop; then listen, keep or discard.", "The bottom bar controls the whole project.");
         inventoryItem(holder, 47, Material.JUKEBOX, "Listen to full mix", NamedTextColor.AQUA, "All saved, audible tracks in this project.");
         inventoryItem(holder, 48, Material.REDSTONE_BLOCK, "Stop recording / preview", NamedTextColor.RED,
@@ -222,7 +200,7 @@ public final class StudioMenu implements Listener {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (!player.isOnline() || player.getOpenInventory().getTopInventory() != holder.inventory) return;
             try {
-                Block station = requireStation(player, holder.station);
+                Block station = studio.station().require(player, holder.station);
                 if (raw == 8 && holder.screen != Screen.LIBRARY) { player.closeInventory(); return; }
                 if (holder.screen == Screen.LIBRARY) {
                     if (holder.choices.containsKey(raw)) {
@@ -261,7 +239,7 @@ public final class StudioMenu implements Listener {
                         }
                     } else switch (raw) {
                         case 45 -> { if (holder.page > 0) open(player, station, Screen.EDITOR, holder.page - 1); return; }
-                        case 49 -> { player.sendMessage("Each row controls one track. The bottom bar controls the full project. Hold an instrument in your off-hand, record, stop, then review your take."); return; }
+                        case 49 -> { player.sendMessage("Each row controls one track. The bottom bar controls the full project. Hold an instrument and record: off-hand plays with the hotbar, right-click a held instrument for the keyboard. Stop, then review your take."); return; }
                         case 47 -> studio.preview(player, false);
                         case 48 -> studio.stop(player);
                         case 51 -> { open(player, station, Screen.SETTINGS, 0); return; }
@@ -292,7 +270,7 @@ public final class StudioMenu implements Listener {
             if (!player.isOnline() || player.getOpenInventory().getTopInventory() != holder.inventory
                     || !original.equals(player.getItemOnCursor())) return;
             try {
-                requireStation(player, holder.station);
+                studio.station().require(player, holder.station);
                 Project project = studio.requireProject(player);
                 if (!project.song().id().equals(holder.projectId)) throw new IllegalArgumentException("The active project changed. Open it again from your projects");
                 if (!studio.discs().musicDisc(original) || original.getAmount() != 1) {
@@ -319,10 +297,10 @@ public final class StudioMenu implements Listener {
             if (!(open(player) instanceof Holder holder)) continue;
             try {
                 if (!holder.owner.equals(player.getUniqueId())) { player.closeInventory(); continue; }
-                requireStation(player, holder.station);
+                studio.station().require(player, holder.station);
                 if (holder.screen == Screen.LIBRARY) continue;
                 Project project = studio.requireProject(player);
-                if (!project.song().id().equals(holder.projectId)) { open(player, requireStation(player, holder.station)); continue; }
+                if (!project.song().id().equals(holder.projectId)) { open(player, studio.station().require(player, holder.station)); continue; }
                 if (project != holder.project || !studio.activity(player).equals(holder.activity)) render(player, holder);
             } catch (IllegalArgumentException ex) { player.closeInventory(); }
             catch (IOException ex) { player.closeInventory(); studio.failure(player, ex); }
