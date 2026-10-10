@@ -100,6 +100,8 @@ class KeyboardViewTest {
                     ClickEvent.Payload.Custom payload = (ClickEvent.Payload.Custom) click.payload();
                     int index = row * KeyboardFont.COLUMNS + column;
                     assertEquals(chordLine ? KeyboardView.chordKey(index) : KeyboardView.noteKey(index), payload.key());
+                    // Other plugins (nightcore) parse every custom click payload as a compound tag.
+                    assertEquals("{}", payload.nbt().string());
                     assertEquals(chordLine, segment.hoverEvent() != null);
                 }
             }
@@ -136,6 +138,7 @@ class KeyboardViewTest {
         for (List<TextComponent> line : lines) {
             for (TextComponent segment : line) {
                 assertEquals(KeyboardView.OPTIONS, ((ClickEvent.Payload.Custom) segment.clickEvent().payload()).key());
+                assertEquals("{}", ((ClickEvent.Payload.Custom) segment.clickEvent().payload()).nbt().string());
             }
         }
     }
