@@ -110,7 +110,7 @@ public final class KeyboardView {
      */
     static Component optionsButton() {
         int buttonAdvance = KeyboardFont.advance(KeyboardFont.BUTTON_WIDTH);
-        ClickEvent click = ClickEvent.custom(OPTIONS, "0b");
+        ClickEvent click = ClickEvent.custom(OPTIONS, "{}");
         TextComponent.Builder out = root();
         out.append(Component.text(String.valueOf(KeyboardFont.BUTTON)).clickEvent(click));
         out.append(Component.newline());
@@ -145,7 +145,7 @@ public final class KeyboardView {
                         out.append(chordCell(centred(size, size.markChar(cells[index].chord()), MARK_WIDTH), index, column));
                     } else {
                         String text = line == 0 ? noteCell(size, column, cells[index], lead) : blankCell;
-                        out.append(Component.text(text).clickEvent(ClickEvent.custom(noteKey(index), "0b")));
+                        out.append(Component.text(text).clickEvent(ClickEvent.custom(noteKey(index), "{}")));
                     }
                 }
             }
@@ -155,7 +155,7 @@ public final class KeyboardView {
 
     private static Component chordCell(String text, int index, int column) {
         return Component.text(text)
-                .clickEvent(ClickEvent.custom(chordKey(index), "0b"))
+                .clickEvent(ClickEvent.custom(chordKey(index), "{}"))
                 .hoverEvent(HoverEvent.showText(Component.text(NOTE_NAMES[column] + " chord")));
     }
 
