@@ -90,8 +90,8 @@ public final class StudioMenu implements Listener {
         ItemStack frame = button(Material.PURPLE_STAINED_GLASS_PANE, " ", NamedTextColor.DARK_PURPLE);
         for (int index = 0; index < size; index++) inventory.setItem(index, index < 9 || index >= size - 9 ? frame : background);
         holder.choices.clear();
-        inventory.setItem(8, button(Material.BARRIER, "Close studio", NamedTextColor.GRAY));
         if (holder.screen == Screen.LIBRARY) { renderLibrary(player, holder); return; }
+        inventory.setItem(8, button(Material.BARRIER, "Close studio", NamedTextColor.GRAY));
         Project project = studio.requireProject(player);
         if (!project.song().id().equals(holder.projectId)) throw new IllegalArgumentException("The active project changed. Open it again from your projects");
         StudioService.Activity activity = studio.activity(player);
@@ -223,7 +223,7 @@ public final class StudioMenu implements Listener {
             if (!player.isOnline() || player.getOpenInventory().getTopInventory() != holder.inventory) return;
             try {
                 Block station = requireStation(player, holder.station);
-                if (raw == 8) { player.closeInventory(); return; }
+                if (raw == 8 && holder.screen != Screen.LIBRARY) { player.closeInventory(); return; }
                 if (holder.screen == Screen.LIBRARY) {
                     if (holder.choices.containsKey(raw)) {
                         if (click.isRightClick()) { dialogs.delete(player, holder.station, holder.choices.get(raw)); return; }
