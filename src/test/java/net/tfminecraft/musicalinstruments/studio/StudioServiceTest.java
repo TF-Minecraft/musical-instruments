@@ -370,6 +370,9 @@ class StudioServiceTest {
         Jukebox box = mock(Jukebox.class);
         when(block.getWorld()).thenReturn(world);
         when(block.getState()).thenReturn(box);
+        when(block.getType()).thenReturn(Material.JUKEBOX);
+        when(discs.custom(disc)).thenReturn(true);
+        when(discs.playbackDisc(disc)).thenReturn(disc);
         when(block.getLocation()).thenReturn(new Location(world, 0, 0, 0));
         when(world.getBlockAt(0, 0, 0)).thenReturn(block);
         when(box.update(false, false)).thenReturn(true);
@@ -389,6 +392,7 @@ class StudioServiceTest {
         when(world.getPlayers()).thenReturn(List.of(player, farAway));
         studio.play(block, disc);
         var order = inOrder((Jukebox) block.getState());
+        order.verify((Jukebox) block.getState()).stopPlaying();
         order.verify((Jukebox) block.getState()).setRecord(disc);
         order.verify((Jukebox) block.getState()).update(false, false);
         order.verify((Jukebox) block.getState()).stopPlaying();
@@ -499,6 +503,50 @@ class StudioServiceTest {
         verify(discs, never()).disc(any(Song.class), any(ItemStack.class));
         verify(original, never()).setAmount(anyInt());
         verifyNoInteractions(inventory);
+    }
+
+    @Test
+    void legacyDiscIsNormalizedBeforeInsertionAndStopTargetsOnlyItsJukeboxChannel() throws Exception {
+        Song song = song(track(1, "note"));
+        ItemStack oldDisc = mock(ItemStack.class);
+        ItemStack silentDisc = mock(ItemStack.class);
+        Block block = jukebox(song, oldDisc);
+        when(discs.playbackDisc(oldDisc)).thenReturn(silentDisc);
+        when(discs.songId(silentDisc)).thenReturn(song.id());
+        Jukebox box = (Jukebox) block.getState();
+        when(box.getRecord()).thenReturn(silentDisc);
+        var order = inOrder(discs, box);
+        studio.play(block, oldDisc);
+        order.verify(discs).playbackDisc(oldDisc);
+        order.verify(box).setRecord(silentDisc);
+        order.verify(box).update(false, false);
+        order.verify(box).stopPlaying();
+        clearInvocations(world, box);
+        studio.stop(block);
+        verify(box).stopPlaying();
+        verify(world).playEffect(block.getLocation(), org.bukkit.Effect.SOUND_STOP_JUKEBOX_SONG, 0, 64);
+        verify(player, never()).stopAllSounds();
+        tick.run();
+        verify(player, never()).playSound(any(Location.class), eq("note"), any(SoundCategory.class), anyFloat(), anyFloat());
+        verify(oldDisc, never()).setAmount(anyInt());
+    }
+
+    @Test
+    void finishedCustomRecordStillClearsVanillaSoundWhileOrdinaryDiscsAreUntouched() throws Exception {
+        Song song = song(track(1, "note"));
+        ItemStack disc = mock(ItemStack.class);
+        Block block = jukebox(song, disc);
+        studio.play(block, disc);
+        for (int index = 0; index < 12; index++) tick.run();
+        Jukebox box = (Jukebox) block.getState();
+        clearInvocations(world, box);
+        studio.stop(block);
+        verify(world).playEffect(block.getLocation(), org.bukkit.Effect.SOUND_STOP_JUKEBOX_SONG, 0, 64);
+        clearInvocations(world, box);
+        when(discs.custom(disc)).thenReturn(false);
+        studio.stop(block);
+        verify(world, never()).playEffect(any(Location.class), any(org.bukkit.Effect.class), anyInt(), anyInt());
+        verify(box, never()).stopPlaying();
     }
 
 }

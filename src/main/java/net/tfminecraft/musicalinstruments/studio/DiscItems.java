@@ -1,5 +1,6 @@
 package net.tfminecraft.musicalinstruments.studio;
 
+import io.papermc.paper.datacomponent.DataComponentTypes;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -11,14 +12,21 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class DiscItems {
     private final NamespacedKey blankKey;
     private final NamespacedKey songKey;
+    private final Consumer<ItemStack> removeVanillaSong;
 
     public DiscItems(Plugin plugin) {
+        this(plugin, item -> item.unsetData(DataComponentTypes.JUKEBOX_PLAYABLE));
+    }
+
+    DiscItems(Plugin plugin, Consumer<ItemStack> removeVanillaSong) {
         blankKey = new NamespacedKey(plugin, "blank_disc");
         songKey = new NamespacedKey(plugin, "song_id");
+        this.removeVanillaSong = removeVanillaSong;
     }
 
     public boolean blank(ItemStack item) {
@@ -50,6 +58,13 @@ public final class DiscItems {
         return item != null && item.getType().name().startsWith("MUSIC_DISC_");
     }
 
+    /** Upgrade old recordings on a detached item before a jukebox can start vanilla music. */
+    public ItemStack playbackDisc(ItemStack original) {
+        ItemStack item = original.asOne();
+        removeVanillaSong.accept(item);
+        return item;
+    }
+
     public ItemStack blankDisc() {
         ItemStack item = new ItemStack(Material.MUSIC_DISC_13);
         var meta = item.getItemMeta();
@@ -57,6 +72,7 @@ public final class DiscItems {
         meta.displayName(text("Blank recording disc", NamedTextColor.YELLOW));
         meta.lore(List.of(text("Use /music publish or /music copy", NamedTextColor.GRAY)));
         item.setItemMeta(meta);
+        removeVanillaSong.accept(item);
         StudioIcons.hideDiscDescription(item);
         return item;
     }
@@ -75,6 +91,7 @@ public final class DiscItems {
                 text(song.tracks().size() + " tracks | " + ((song.lengthTicks() + 19) / 20) + " seconds", NamedTextColor.GRAY),
                 text("Edition: " + song.id(), NamedTextColor.DARK_GRAY)));
         item.setItemMeta(meta);
+        removeVanillaSong.accept(item);
         StudioIcons.hideDiscDescription(item);
         return item;
     }

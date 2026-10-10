@@ -2,6 +2,8 @@ package net.tfminecraft.musicalinstruments.studio;
 
 import net.tfminecraft.musicalinstruments.InstrumentPlugin;
 import org.bukkit.Location;
+import org.bukkit.Effect;
+import org.bukkit.Material;
 import org.bukkit.SoundCategory;
 import org.bukkit.block.Block;
 import org.bukkit.block.Jukebox;
@@ -428,17 +430,30 @@ public final class StudioService {
         capacity();
         Song song = edition(id);
         // Resolve the edition before inserting the item or altering the world.
+        ItemStack recording = discs.playbackDisc(disc);
         Jukebox box = (Jukebox) block.getState();
-        box.setRecord(disc.asOne());
+        stopVanilla(block);
+        box.setRecord(recording);
         if (!box.update(false, false)) {
             throw new IllegalArgumentException("The jukebox changed before the disc could be inserted");
         }
-        box.stopPlaying();
+        stopVanilla(block);
         jukeboxes.put(key, new Playback(song, clock + 1));
     }
 
     public void stop(Block block) {
-        jukeboxes.remove(BlockKey.of(block));
+        boolean active = jukeboxes.remove(BlockKey.of(block)) != null;
+        if (active || block.getType() == Material.JUKEBOX
+                && block.getState() instanceof Jukebox box && discs.custom(box.getRecord())) {
+            stopVanilla(block);
+        }
+    }
+
+    private void stopVanilla(Block block) {
+        if (block.getState() instanceof Jukebox box) box.stopPlaying();
+        // Clear the client's jukebox channel even if the server already thinks it is stopped.
+        // This targets only this block, leaving other jukeboxes and instrument samples alone.
+        block.getWorld().playEffect(block.getLocation(), Effect.SOUND_STOP_JUKEBOX_SONG, 0, Math.max(64, settings.radius()));
     }
 
     public void unload(UUID world, int chunkX, int chunkZ) {

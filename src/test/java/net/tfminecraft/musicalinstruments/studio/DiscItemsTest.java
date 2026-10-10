@@ -23,7 +23,8 @@ class DiscItemsTest {
             Plugin plugin = mock(Plugin.class);
             when(plugin.getName()).thenReturn("MusicalInstruments");
             when(plugin.namespace()).thenReturn("musicalinstruments");
-            DiscItems discs = new DiscItems(plugin);
+            java.util.function.Consumer<ItemStack> silence = mock(java.util.function.Consumer.class);
+            DiscItems discs = new DiscItems(plugin, silence);
             ItemStack original = mock(ItemStack.class);
             ItemStack detached = mock(ItemStack.class);
             ItemMeta meta = mock(ItemMeta.class);
@@ -38,9 +39,27 @@ class DiscItemsTest {
             verify(data).remove(new NamespacedKey(plugin, "blank_disc"));
             verify(data).set(new NamespacedKey(plugin, "song_id"), PersistentDataType.STRING, song.id().toString());
             verify(detached).setItemMeta(meta);
+            verify(silence).accept(detached);
+            verify(silence, never()).accept(original);
             verify(original, never()).setItemMeta(any());
             verify(meta, never()).setCustomModelData(any());
             verify(detached, never()).setType(any());
         }
     }
+    @Test
+    void legacyPlaybackNormalizationUsesADetachedSingleDiscAndDoesNotChangeItsEdition() {
+        Plugin plugin = mock(Plugin.class);
+        when(plugin.namespace()).thenReturn("musicalinstruments");
+        java.util.function.Consumer<ItemStack> silence = mock(java.util.function.Consumer.class);
+        DiscItems discs = new DiscItems(plugin, silence);
+        ItemStack original = mock(ItemStack.class);
+        ItemStack single = mock(ItemStack.class);
+        when(original.asOne()).thenReturn(single);
+        assertSame(single, discs.playbackDisc(original));
+        verify(silence).accept(single);
+        verify(silence, never()).accept(original);
+        verify(single, never()).setItemMeta(any());
+        verify(original, never()).setAmount(anyInt());
+    }
+
 }
