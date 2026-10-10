@@ -35,6 +35,9 @@ public final class StudioCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         try {
+            if (action.equals("studio") && !player.hasPermission("instruments.studio")) {
+                throw new IllegalArgumentException("Opening the studio by command is reserved for staff");
+            }
             switch (action) {
                 case "new" -> {
                     need(args, 2, "new <title>");
@@ -49,7 +52,7 @@ public final class StudioCommand implements CommandExecutor, TabCompleter {
                             project.pending(), project.bpm(), project.metronome()));
                     player.sendMessage("Project renamed.");
                 }
-                case "studio" -> menu.open(player, player.getTargetBlockExact(5));
+                case "studio" -> menu.open(player, null);
                 case "projects" -> {
                     var projects = studio.listProjects(player);
                     if (projects.isEmpty()) player.sendMessage("No projects yet. Open /music studio to create a song.");
@@ -149,12 +152,13 @@ public final class StudioCommand implements CommandExecutor, TabCompleter {
     }
 
     private void help(Player player) {
-        player.sendMessage("/music new <title> | studio | projects | open <project-id> | status | title <title>");
+        player.sendMessage("/music new <title> | projects | open <project-id> | status | title <title>");
+        if (player.hasPermission("instruments.studio")) player.sendMessage("/music studio opens the studio anywhere (staff)");
         player.sendMessage("/music record <track> | stop | preview [take] | keep | discard");
         player.sendMessage("/music volume <track> <0-2> | mute <track> | remove <track>");
         player.sendMessage("/music bpm <40-240> | metronome <on|off>");
         player.sendMessage("/music blank | publish | copy | reset confirm");
-        player.sendMessage("Sneak-right-click an empty jukebox to open the studio. Right-click with a published disc to play it.");
+        player.sendMessage("Right-click an empty jukebox with a published disc to play it.");
     }
 
     private void need(String[] args, int count, String usage) {
@@ -194,6 +198,7 @@ public final class StudioCommand implements CommandExecutor, TabCompleter {
             var actions = new java.util.ArrayList<String>();
             if (sender.hasPermission("instruments.record")) {
                 actions.addAll(EDIT);
+                if (!sender.hasPermission("instruments.studio")) actions.remove("studio");
             }
             if (sender.hasPermission("instruments.copy")) {
                 actions.add("copy");

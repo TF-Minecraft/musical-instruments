@@ -31,6 +31,7 @@ import java.util.logging.Level;
 
 /** All capture/playback uses one main-thread clock, including overdub monitoring. */
 public final class StudioService {
+    public static final int MAX_PROJECTS = 36;
     private final InstrumentPlugin plugin;
     private final StudioStore store;
     private final StudioSettings settings;
@@ -114,12 +115,38 @@ public final class StudioService {
 
     public void create(Player player, String title, boolean reset) throws IOException {
         requireIdle(player);
+        if (!reset) requireProjectSpace(player);
         Project previous = project(player);
         if (previous != null) save(player, previous); // Also preserve a take retained after a failed write.
         UUID id = reset && previous != null ? previous.song().id() : UUID.randomUUID();
         save(player, new Project(new Song(id, player.getUniqueId(), player.getName(), title, List.of()),
                 null, 100, true));
         previews.remove(player.getUniqueId());
+    }
+
+    public void requireProjectSpace(Player player) throws IOException {
+        if (listProjects(player).size() >= MAX_PROJECTS) {
+            throw new IllegalArgumentException("Your studio is full (36 projects). Delete an old project first: right-click its song in the library");
+        }
+    }
+
+    public Project project(Player player, UUID id) throws IOException {
+        Project current = project(player);
+        return current != null && current.song().id().equals(id) ? current : store.project(player.getUniqueId(), id);
+    }
+
+    public void deleteProject(Player player, Project expected) throws IOException {
+        requireIdle(player);
+        if (!expected.song().owner().equals(player.getUniqueId())) throw new IllegalArgumentException("This is not your project");
+        UUID id = expected.song().id();
+        if (!project(player, id).equals(expected)) throw new IllegalArgumentException("The project changed. Open the delete confirmation again");
+        Project current = project(player);
+        store.delete(player.getUniqueId(), id);
+        if (current != null && current.song().id().equals(id)) {
+            projects.remove(player.getUniqueId());
+            previews.remove(player.getUniqueId());
+        }
+        player.sendMessage("Deleted '" + expected.song().title() + "'. Published discs keep their music.");
     }
 
     public List<Project> listProjects(Player player) throws IOException {
@@ -271,6 +298,17 @@ public final class StudioService {
         Song edition = publishEdition(player);
         player.getInventory().setItemInMainHand(discs.disc(edition));
         player.sendMessage("Published '" + edition.title() + "'. Existing discs will keep this edition.");
+    }
+
+    public ItemStack publishOnDisc(Player player, ItemStack disc) throws IOException {
+        requireIdle(player);
+        if (!discs.musicDisc(disc) || disc.getAmount() != 1) {
+            throw new IllegalArgumentException("Pick up one music disc and place it on Publish full song");
+        }
+        Song edition = publishEdition(player);
+        ItemStack result = discs.disc(edition, disc);
+        player.sendMessage("Published '" + edition.title() + "' on your disc. Other copies keep their previous music.");
+        return result;
     }
 
     private Song publishEdition(Player player) throws IOException {

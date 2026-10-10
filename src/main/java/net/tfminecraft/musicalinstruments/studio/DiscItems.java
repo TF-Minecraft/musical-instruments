@@ -61,8 +61,13 @@ public final class DiscItems {
     }
 
     public ItemStack disc(Song song) {
-        ItemStack item = new ItemStack(Material.MUSIC_DISC_13);
+        return disc(song, new ItemStack(Material.MUSIC_DISC_13));
+    }
+
+    public ItemStack disc(Song song, ItemStack original) {
+        ItemStack item = original.asOne();
         var meta = item.getItemMeta();
+        meta.getPersistentDataContainer().remove(blankKey);
         meta.getPersistentDataContainer().set(songKey, PersistentDataType.STRING, song.id().toString());
         meta.displayName(text(song.title(), NamedTextColor.GOLD));
         meta.lore(List.of(text("By " + song.author(), NamedTextColor.GRAY),

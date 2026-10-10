@@ -422,4 +422,83 @@ class StudioServiceTest {
         assertThrows(IOException.class, () -> studio.play(block, disc));
         verify(block, never()).getState();
     }
+    @Test
+    void fullLibraryRejectsCreationUntilAProjectIsDeletedAndResetRemainsAllowed() throws Exception {
+        for (int index = 0; index < StudioService.MAX_PROJECTS; index++) studio.create(player, "Song " + index, false);
+        Project active = studio.requireProject(player);
+        assertThrows(IllegalArgumentException.class, () -> studio.create(player, "Extra", false));
+        assertEquals(active, studio.requireProject(player));
+        studio.create(player, "Reset", true);
+        assertEquals(36, studio.listProjects(player).size());
+        Project inactive = studio.listProjects(player).stream().filter(p -> !p.song().id().equals(active.song().id())).findFirst().orElseThrow();
+        studio.deleteProject(player, inactive);
+        studio.create(player, "Replacement", false);
+        assertEquals(36, studio.listProjects(player).size());
+    }
+
+    @Test
+    void deletingActiveProjectDoesNotResurrectItAndKeepsOtherProjectsAndEditions() throws Exception {
+        studio.create(player, "Other", false);
+        Project other = studio.requireProject(player);
+        Project active = new Project(song(track(1, "note")), null, 100, false);
+        studio.save(player, active);
+        Song edition = active.song().edition();
+        store.publish(edition);
+        studio.deleteProject(player, active);
+        assertNull(studio.project(player));
+        studio.quit(player);
+        assertTrue(store.project(owner).isEmpty());
+        assertEquals(List.of(other), store.projects(owner));
+        assertEquals(edition, store.song(edition.id()));
+    }
+
+    @Test
+    void deletionRejectsStaleConfirmationForeignOwnerAndActiveRecording() throws Exception {
+        Project before = new Project(song(track(1, "note")), null, 100, false);
+        studio.save(player, before);
+        Project changed = new Project(before.song(), null, 105, false);
+        studio.edit(player, changed);
+        assertThrows(IllegalArgumentException.class, () -> studio.deleteProject(player, before));
+        Project foreign = new Project(new Song(UUID.randomUUID(), UUID.randomUUID(), "Other", "Other", List.of()), null, 100, false);
+        assertThrows(IllegalArgumentException.class, () -> studio.deleteProject(player, foreign));
+        studio.record(player, 2);
+        assertThrows(IllegalArgumentException.class, () -> studio.deleteProject(player, changed));
+        assertEquals(changed, store.project(owner).orElseThrow());
+    }
+
+    @Test
+    void publishingOnProvidedDiscKeepsEditionsSeparateAndRejectsStacks() throws Exception {
+        studio.save(player, new Project(song(track(1, "note")), null, 100, false));
+        ItemStack original = mock(ItemStack.class);
+        ItemStack encoded = mock(ItemStack.class);
+        when(discs.musicDisc(original)).thenReturn(true);
+        when(original.getAmount()).thenReturn(2);
+        assertThrows(IllegalArgumentException.class, () -> studio.publishOnDisc(player, original));
+        verify(store, never()).publish(any());
+        when(original.getAmount()).thenReturn(1);
+        when(discs.disc(any(Song.class), eq(original))).thenReturn(encoded);
+        assertSame(encoded, studio.publishOnDisc(player, original));
+        var published = ArgumentCaptor.forClass(Song.class);
+        verify(store).publish(published.capture());
+        assertNotEquals(studio.requireProject(player).song().id(), published.getValue().id());
+        assertEquals(published.getValue(), store.song(published.getValue().id()));
+        verifyNoInteractions(inventory);
+    }
+
+    @Test
+    void providedDiscSurvivesPublicationFailureAndPendingTakesCannotBePublished() throws Exception {
+        Project project = new Project(song(track(1, "note")), track(2, "pending"), 100, false);
+        studio.save(player, project);
+        ItemStack original = mock(ItemStack.class);
+        when(discs.musicDisc(original)).thenReturn(true);
+        when(original.getAmount()).thenReturn(1);
+        assertThrows(IllegalArgumentException.class, () -> studio.publishOnDisc(player, original));
+        studio.edit(player, project.discard());
+        doThrow(new IOException("disk full")).when(store).publish(any());
+        assertThrows(IOException.class, () -> studio.publishOnDisc(player, original));
+        verify(discs, never()).disc(any(Song.class), any(ItemStack.class));
+        verify(original, never()).setAmount(anyInt());
+        verifyNoInteractions(inventory);
+    }
+
 }

@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Native title input and a tempo slider, without routing private input through roleplay chat. */
+/** Native title input and confirmations without routing private input through roleplay chat. */
 public final class StudioDialogs {
     @FunctionalInterface
     interface Reopen { void open(Player player, Block station) throws IOException; }
@@ -45,8 +45,9 @@ public final class StudioDialogs {
         this.library = library;
     }
 
-    public void create(Player player, Location station) {
+    public void create(Player player, Location station) throws IOException {
         studio.requireIdle(player);
+        studio.requireProjectSpace(player);
         AtomicBoolean used = new AtomicBoolean();
         Dialog dialog = Dialog.create(builder -> builder.empty()
                 .base(DialogBase.builder(Component.text("Create a song", NamedTextColor.GOLD))
@@ -67,29 +68,22 @@ public final class StudioDialogs {
         player.showDialog(dialog);
     }
 
-    public void settings(Player player, Location station) throws IOException {
+    public void rename(Player player, Location station) throws IOException {
         studio.requireIdle(player);
         Project project = studio.requireProject(player);
         AtomicBoolean used = new AtomicBoolean();
         UUID id = project.song().id();
         var accept = action(player, station, used, (target, view) -> {
-            Float bpm = view.getFloat("tempo");
-            Boolean metronome = view.getBoolean("metronome");
             String title = view.getText("title");
-            if (bpm == null || !Float.isFinite(bpm) || bpm != bpm.intValue() || metronome == null || title == null) {
-                throw new IllegalArgumentException("Please enter a title and a valid tempo");
-            }
-            applySettings(target, id, title, bpm.intValue(), metronome);
+            if (title == null) throw new IllegalArgumentException("Please enter a title");
+            Project current = studio.requireProject(target);
+            applySettings(target, id, title, current.bpm(), current.metronome());
         });
         var cancel = action(player, station, used, (target, view) -> {});
         Dialog dialog = Dialog.create(builder -> builder.empty()
-                .base(DialogBase.builder(Component.text("Song settings", NamedTextColor.GOLD))
-                        .body(List.of(DialogBody.plainMessage(Component.text("Name your song and set the recording click."))))
-                        .inputs(List.of(
-                                DialogInput.text("title", Component.text("Song title")).initial(project.song().title()).maxLength(64).width(300).build(),
-                                DialogInput.numberRange("tempo", Component.text("Tempo (BPM)"), 40, 240)
-                                        .step(1f).initial((float) project.bpm()).width(300).build(),
-                                DialogInput.bool("metronome", Component.text("Private metronome")).initial(project.metronome()).build()))
+                .base(DialogBase.builder(Component.text("Rename project", NamedTextColor.GOLD))
+                        .inputs(List.of(DialogInput.text("title", Component.text("Song title"))
+                                .initial(project.song().title()).maxLength(64).width(300).build()))
                         .canCloseWithEscape(true).build())
                 .type(DialogType.confirmation(
                         ActionButton.create(Component.text("Save", NamedTextColor.GREEN), null, 150, accept),
@@ -117,6 +111,24 @@ public final class StudioDialogs {
                                 })),
                         ActionButton.create(Component.text("Keep my song", NamedTextColor.GREEN), null, 150,
                                 action(player, station, used, (target, view) -> {})))));
+        player.closeInventory();
+        player.showDialog(dialog);
+    }
+
+    public void delete(Player player, Location station, UUID id) throws IOException {
+        studio.requireIdle(player);
+        Project project = studio.project(player, id);
+        AtomicBoolean used = new AtomicBoolean();
+        Dialog dialog = Dialog.create(builder -> builder.empty()
+                .base(DialogBase.builder(Component.text("Delete this song?", NamedTextColor.RED))
+                        .body(List.of(DialogBody.plainMessage(Component.text("Delete '" + project.song().title()
+                                + "' and its editable tracks and pending take? Other projects and published discs are kept."))))
+                        .canCloseWithEscape(true).build())
+                .type(DialogType.confirmation(
+                        ActionButton.create(Component.text("Delete song", NamedTextColor.RED), null, 150,
+                                action(player, station, used, (target, view) -> studio.deleteProject(target, project), library)),
+                        ActionButton.create(Component.text("Keep song", NamedTextColor.GREEN), null, 150,
+                                action(player, station, used, (target, view) -> {}, library)))));
         player.closeInventory();
         player.showDialog(dialog);
     }

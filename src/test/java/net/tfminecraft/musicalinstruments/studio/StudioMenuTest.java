@@ -52,6 +52,7 @@ class StudioMenuTest {
         when(scheduler.runTaskTimer(eq(plugin), any(Runnable.class), eq(10L), eq(10L))).thenReturn(refreshTask);
         when(server.createInventory(any(InventoryHolder.class), anyInt(), any(Component.class))).thenAnswer(call -> {
             when(inventory.getHolder()).thenReturn(call.getArgument(0));
+            when(inventory.getSize()).thenReturn(call.getArgument(1));
             return inventory;
         });
         when(scheduler.runTask(eq(plugin), any(Runnable.class))).thenAnswer(call -> {
@@ -104,7 +105,7 @@ class StudioMenuTest {
 
     @Test
     void trackClickRecordsAndClosesOnlyAfterTheInventoryEvent() throws Exception {
-        InventoryClickEvent event = click(18, ClickType.LEFT);
+        InventoryClickEvent event = click(19, ClickType.LEFT);
         verify(event).setCancelled(true);
         verify(studio, never()).record(any(), anyInt());
         executeClick();
@@ -114,7 +115,7 @@ class StudioMenuTest {
 
     @Test
     void volumeMixingPreservesNotesAndThePendingTake() throws Exception {
-        click(10, ClickType.RIGHT);
+        click(11, ClickType.RIGHT);
         executeClick();
         var edited = ArgumentCaptor.forClass(Project.class);
         verify(studio).edit(eq(player), edited.capture());
@@ -126,7 +127,7 @@ class StudioMenuTest {
 
     @Test
     void muteOnlyChangesTheSavedTrackMix() throws Exception {
-        click(11, ClickType.LEFT);
+        click(12, ClickType.LEFT);
         executeClick();
         var edited = ArgumentCaptor.forClass(Project.class);
         verify(studio).edit(eq(player), edited.capture());
@@ -135,18 +136,21 @@ class StudioMenuTest {
     }
 
     @Test
-    void publishingUsesInventoryDiscs() throws Exception {
+    void publishingRequiresADiscOnTheCursor() throws Exception {
         click(50, ClickType.LEFT);
-        executeClick();
-        verify(studio).publishFromInventory(player);
+        assertNull(queued);
+        verify(studio, never()).publishFromInventory(player);
         verify(studio, never()).publish(player);
     }
 
     @Test
-    void settingsOpensTheInputForm() throws Exception {
+    void settingsOpensItsInventoryAndTitleUsesOnlyARenameForm() throws Exception {
         click(4, ClickType.LEFT);
         executeClick();
-        verify(dialogs).settings(player, new Location(world, 0, 0, 0));
+        assertEquals(27, inventory.getSize());
+        click(11, ClickType.LEFT);
+        executeClick();
+        verify(dialogs).rename(player, new Location(world, 0, 0, 0));
     }
 
     @Test
@@ -157,6 +161,7 @@ class StudioMenuTest {
         verify(click(54, ClickType.SHIFT_LEFT)).setCancelled(true);
         InventoryDragEvent drag = mock(InventoryDragEvent.class);
         when(drag.getView()).thenReturn(view);
+        when(drag.getRawSlots()).thenReturn(java.util.Set.of(9));
         menu.drag(drag);
         verify(drag).setCancelled(true);
         verify(scheduler, never()).runTask(eq(plugin), any(Runnable.class));
@@ -164,7 +169,7 @@ class StudioMenuTest {
 
     @Test
     void movingAwayBeforeTheDeferredClickCannotRecordOrLoadTheStationChunk() throws Exception {
-        click(9, ClickType.LEFT);
+        click(10, ClickType.LEFT);
         when(player.getLocation()).thenReturn(new Location(world, 100, 0, 0));
         executeClick();
         verify(studio, never()).record(any(), anyInt());
@@ -174,7 +179,7 @@ class StudioMenuTest {
 
     @Test
     void permissionRevocationPreventsADeferredRecording() throws Exception {
-        click(9, ClickType.LEFT);
+        click(10, ClickType.LEFT);
         when(player.hasPermission("instruments.record")).thenReturn(false);
         executeClick();
         verify(studio, never()).record(any(), anyInt());
@@ -191,10 +196,10 @@ class StudioMenuTest {
     void studioOpensAProjectLibraryAndSelectingASongOpensItsEditor() throws Exception {
         menu.open(player, station);
         verify(studio, never()).create(any(), anyString(), anyBoolean());
-        click(10, ClickType.LEFT);
+        click(9, ClickType.LEFT);
         executeClick();
         verify(studio).selectProject(player, project.song().id());
-        click(18, ClickType.LEFT);
+        click(19, ClickType.LEFT);
         executeClick();
         verify(studio).record(player, 2);
     }
@@ -232,21 +237,28 @@ class StudioMenuTest {
     }
 
     @Test
-    void projectActionsLiveOnTheirOwnScreen() throws Exception {
+    void settingsHasTempoMetronomeAndConfirmedResetWithoutDiscActions() throws Exception {
         click(51, ClickType.LEFT);
         executeClick();
-        click(14, ClickType.LEFT);
+        click(13, ClickType.RIGHT);
         executeClick();
-        verify(studio).prepareBlankFromInventory(player);
+        var changed = ArgumentCaptor.forClass(Project.class);
+        verify(studio).edit(eq(player), changed.capture());
+        assertEquals(95, changed.getValue().bpm());
+        click(15, ClickType.LEFT);
+        executeClick();
+        verify(studio).edit(player, new Project(project.song(), project.pending(), 100, true));
         click(18, ClickType.LEFT);
         executeClick();
         verify(dialogs).reset(player, new Location(world, 0, 0, 0));
         verify(studio, never()).record(any(), anyInt());
+        verify(studio, never()).prepareBlankFromInventory(any());
+        verify(studio, never()).copyFromInventory(any());
     }
 
     @Test
     void switchingTheActiveProjectRejectsAnAlreadyQueuedTrackClick() throws Exception {
-        click(9, ClickType.LEFT);
+        click(10, ClickType.LEFT);
         Song other = new Song(UUID.randomUUID(), player.getUniqueId(), "Player", "Other", List.of());
         when(studio.requireProject(player)).thenReturn(new Project(other, null, 100, true));
         executeClick();
@@ -259,23 +271,24 @@ class StudioMenuTest {
         menu.openProject(player, station);
         click(53, ClickType.LEFT);
         executeClick();
-        click(9, ClickType.LEFT);
+        click(10, ClickType.LEFT);
         executeClick();
         verify(studio).record(player, 5);
     }
 
     @Test
-    void projectPaginationSelectsTheSongShownOnTheNextPage() throws Exception {
-        List<Project> library = java.util.stream.IntStream.range(0, 29).mapToObj(index ->
+    void libraryFillsAllThirtySixSlotsAndRightClickRequestsDeletion() throws Exception {
+        List<Project> library = java.util.stream.IntStream.range(0, 36).mapToObj(index ->
                 new Project(new Song(UUID.randomUUID(), player.getUniqueId(), "Player", "Song " + index, List.of()), null, 100, true)).toList();
         when(studio.listProjects(player)).thenReturn(library);
         menu.open(player, station);
-        click(53, ClickType.LEFT);
+        click(9, ClickType.RIGHT);
         executeClick();
-        when(studio.requireProject(player)).thenReturn(library.get(28));
-        click(10, ClickType.LEFT);
+        verify(dialogs).delete(player, new Location(world, 0, 0, 0), library.getFirst().song().id());
+        when(studio.requireProject(player)).thenReturn(library.getLast());
+        click(44, ClickType.LEFT);
         executeClick();
-        verify(studio).selectProject(player, library.get(28).song().id());
+        verify(studio).selectProject(player, library.getLast().song().id());
     }
 
     @Test
@@ -288,4 +301,93 @@ class StudioMenuTest {
         assertEquals(project.song().track(1), result.getValue().song().track(1));
         assertEquals(project.pending(), result.getValue().song().track(2));
     }
+    private ItemStack prepareCursorDisc() {
+        DiscItems discs = mock(DiscItems.class);
+        when(studio.discs()).thenReturn(discs);
+        ItemStack disc = mock(ItemStack.class);
+        when(disc.getType()).thenReturn(org.bukkit.Material.MUSIC_DISC_CAT);
+        when(disc.getAmount()).thenReturn(1);
+        when(disc.clone()).thenReturn(disc);
+        when(discs.musicDisc(disc)).thenReturn(true);
+        when(player.getItemOnCursor()).thenReturn(disc);
+        return disc;
+    }
+
+    private void deposit(ItemStack disc) {
+        InventoryClickEvent event = mock(InventoryClickEvent.class);
+        when(event.getView()).thenReturn(view);
+        when(event.getWhoClicked()).thenReturn(player);
+        when(event.getRawSlot()).thenReturn(50);
+        when(event.getClick()).thenReturn(ClickType.LEFT);
+        when(event.getCursor()).thenReturn(disc);
+        menu.click(event);
+        verify(event).setCancelled(true);
+    }
+
+    @Test
+    void publishingChangesExactlyTheCursorDiscAfterTheEvent() throws Exception {
+        ItemStack disc = prepareCursorDisc();
+        ItemStack result = mock(ItemStack.class);
+        when(studio.publishOnDisc(player, disc)).thenReturn(result);
+        deposit(disc);
+        verify(studio, never()).publishOnDisc(any(), any());
+        executeClick();
+        verify(studio).publishOnDisc(player, disc);
+        verify(player).setItemOnCursor(result);
+        verify(studio, never()).publishFromInventory(any());
+    }
+
+    @Test
+    void recordedDiscNeedsASecondClickAndChangingProjectInvalidatesConfirmation() throws Exception {
+        ItemStack disc = prepareCursorDisc();
+        when(studio.discs().recorded(disc)).thenReturn(true);
+        deposit(disc);
+        executeClick();
+        verify(studio, never()).publishOnDisc(any(), any());
+        when(studio.requireProject(player)).thenReturn(new Project(project.song(), project.pending(), 105, false));
+        deposit(disc);
+        executeClick();
+        verify(studio, never()).publishOnDisc(any(), any());
+        deposit(disc);
+        executeClick();
+        verify(studio).publishOnDisc(player, disc);
+    }
+
+    @Test
+    void cursorChangesAndFailedWritesDoNotConsumeDiscs() throws Exception {
+        ItemStack disc = prepareCursorDisc();
+        deposit(disc);
+        when(player.getItemOnCursor()).thenReturn(mock(ItemStack.class));
+        executeClick();
+        verify(studio, never()).publishOnDisc(any(), any());
+        when(player.getItemOnCursor()).thenReturn(disc);
+        doThrow(new java.io.IOException("disk full")).when(studio).publishOnDisc(player, disc);
+        deposit(disc);
+        executeClick();
+        verify(player, never()).setItemOnCursor(any());
+        verify(studio).failure(eq(player), any(java.io.IOException.class));
+    }
+
+    @Test
+    void bottomOrdinaryClicksCanPickUpDiscsAndDragAcrossMenuCannotPublish() throws Exception {
+        verify(click(54, ClickType.LEFT), never()).setCancelled(true);
+        InventoryDragEvent drag = mock(InventoryDragEvent.class);
+        when(drag.getView()).thenReturn(view);
+        when(drag.getRawSlots()).thenReturn(java.util.Set.of(50, 51));
+        menu.drag(drag);
+        verify(drag).setCancelled(true);
+        verify(studio, never()).publishOnDisc(any(), any());
+    }
+
+    @Test
+    void staffCanOpenWithoutStationButRevocationBlocksDeferredControls() throws Exception {
+        assertThrows(IllegalArgumentException.class, () -> menu.open(player, null));
+        when(player.hasPermission("instruments.studio")).thenReturn(true);
+        menu.openProject(player, null);
+        click(19, ClickType.LEFT);
+        when(player.hasPermission("instruments.studio")).thenReturn(false);
+        executeClick();
+        verify(studio, never()).record(any(), anyInt());
+    }
+
 }

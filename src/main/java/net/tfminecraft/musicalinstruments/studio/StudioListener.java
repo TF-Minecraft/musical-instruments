@@ -46,14 +46,10 @@ public final class StudioListener implements Listener {
                     studio.stop(event.getClickedBlock());
                     box.eject();
                 }
-            } else if (!box.hasRecord() && mainHand && player.isSneaking()
-                    && player.hasPermission("instruments.record")) {
-                event.setCancelled(true);
-                menu.open(player, event.getClickedBlock());
             } else if (!box.hasRecord() && studio.discs().custom(held)) {
                 event.setCancelled(true);
                 if (studio.discs().blank(held)) {
-                    player.sendMessage("This disc is blank. Sneak-right-click an empty jukebox to open the studio.");
+                    player.sendMessage("This disc is blank. Publish a song on it in a recording studio first.");
                 } else if (!player.hasPermission("instruments.play")) {
                     player.sendMessage("You don't have permission to play recording discs.");
                 } else if (itemAllowed) {

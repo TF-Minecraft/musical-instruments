@@ -121,4 +121,16 @@ class StudioListenerTest {
         assertEquals(original, event.useInteractedBlock());
         verify(studio, never()).play(any(), any());
     }
+    @Test
+    void sneakingWithVanillaItemsDoesNotClaimTheMmoItemsInteraction() throws Exception {
+        when(discs.custom(disc)).thenReturn(false);
+        when(player.isSneaking()).thenReturn(true);
+        when(player.hasPermission("instruments.record")).thenReturn(true);
+        PlayerInteractEvent event = event(EquipmentSlot.HAND);
+        Event.Result original = event.useInteractedBlock();
+        listener.interact(event);
+        assertEquals(original, event.useInteractedBlock());
+        verify(studio, never()).play(any(), any());
+    }
+
 }

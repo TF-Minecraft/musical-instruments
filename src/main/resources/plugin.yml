@@ -15,6 +15,9 @@ commands:
     aliases: [recording]
 
 permissions:
+  instruments.studio:
+    description: Open the recording studio by command without a physical station (staff)
+    default: op
   instruments.record:
     description: Create projects, record tracks, prepare blank discs and publish editions
     default: true

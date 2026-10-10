@@ -72,6 +72,15 @@ public final class StudioStore {
         return root.resolve("projects").resolve(owner.toString()).resolve(id + ".yml");
     }
 
+    public void delete(UUID owner, UUID id) throws IOException {
+        project(owner, id); // Validate identity and ownership before removing any file.
+        Optional<Project> selected = project(owner);
+        if (selected.isPresent() && selected.get().song().id().equals(id)) {
+            Files.deleteIfExists(root.resolve("projects").resolve(owner + ".yml"));
+        }
+        Files.deleteIfExists(projectFile(owner, id));
+    }
+
     private Project decodeProject(Path file, UUID owner, UUID id) throws IOException {
         YamlConfiguration yaml = read(file);
         try {

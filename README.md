@@ -9,10 +9,10 @@ Sounds play at the performer's location for nearby listeners, while floating not
 ## Features
 
 - **Multitrack recording** — record successive takes while hearing the other tracks, preview the mix, and keep or discard each take.
-- **Player-made records** — publish immutable song editions onto blank discs, copy them, and play them from ordinary jukeboxes.
-- **Visual recording studio** — sneak-right-click an empty jukebox for track cards, volume and mute controls, take review, and publishing from your inventory.
-- **Song projects** — open your project library, create multiple songs, and keep each project's tracks and pending take independently.
-- **Song settings form** — name your song, choose tempo with a slider, and toggle the private metronome without commands.
+- **Player-made records** — publish immutable song editions onto physical discs, copy them, and play them from ordinary jukeboxes.
+- **Visual recording studio** — staff can use `/music studio` anywhere for track rows, volume and mute controls, take review, and publishing onto a disc held on the cursor. Player station integration is pending.
+- **Song projects** — open your project library, create up to 36 songs, and keep each project's tracks and pending take independently. Right-click a song to delete it after confirmation.
+- **Project settings**: rename your song, adjust tempo and toggle the recording metronome from a dedicated inventory page.
 - **Live hotbar performance** — changing hotbar slots triggers the instrument's notes immediately.
 - **Alternate notes and chords** — sneaking opens a second set of sounds for the same instrument.
 - **Repeatable notes** — the selected slot resets after a note so players can play it again.
@@ -37,13 +37,21 @@ Created by [Justinas Launikonis](https://github.com/JustinasLa).
 
 [Project documentation](https://github.com/TF-Minecraft/Docs/blob/main/projects/MusicalInstruments/README.md)
 
-Sneak-right-click an empty jukebox to open your song projects. Choose a song or
-**Create a new song**, enter its title, and hold an instrument in your off-hand.
+Staff can use `/music studio` anywhere with `instruments.studio` (default: op).
+Player access through a dedicated station is pending; jukebox sneak-right-click
+remains available to MMOItems and ordinary right-click plays/ejects discs.
+Choose a song or **Create a new song**, enter its title, and hold an instrument
+in your off-hand. The library fills all 36 middle slots in order. When full,
+right-click an old song and confirm its deletion before creating another one.
 Each horizontal row controls one track: record, volume, mute, listen, keep and
 discard. The bottom bar controls the full mix and stops recording or preview.
-**Project actions** opens title, tempo, metronome, blank-disc and copy controls.
-Use **Publish full song** with a blank disc in your inventory when the mix is ready.
-The recording guide explains the steps; projects and tracks have pages when needed.
+**Project settings** opens separate title, tempo and metronome controls. The
+metronome is heard only by the performer and is never recorded; count-in clicks
+always play. Pick up exactly one music disc and place it on **Publish full song**.
+The encoded disc returns to the cursor with the same material; no blank-disc
+preparation is needed. A previously recorded disc needs a second click within
+10 seconds to confirm overwriting. Other copies keep their earlier edition.
+The recording guide is centered; projects with more than four tracks use pages.
 
 Commands are also available: start with `/music new <title>` and use
 `/music record 1`. After `/music stop`, listen with `/music preview take` and
