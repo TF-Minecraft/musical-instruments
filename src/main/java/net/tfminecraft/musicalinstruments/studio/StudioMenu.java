@@ -84,8 +84,11 @@ public final class StudioMenu implements Listener {
         Inventory inventory = holder.inventory;
         ItemStack background = button(Material.BLACK_STAINED_GLASS_PANE, " ", NamedTextColor.DARK_GRAY);
         ItemStack frame = button(Material.PURPLE_STAINED_GLASS_PANE, " ", NamedTextColor.DARK_PURPLE);
-        for (int index = 0; index < 54; index++) inventory.setItem(index, index < 9 || index >= 45 ? frame : background);
-        inventory.setItem(0, button(Material.WRITABLE_BOOK, "How to record", NamedTextColor.AQUA,
+        for (int index = 0; index < 54; index++) inventory.setItem(index, index < 9 || index >= 36 ? frame : background);
+        // Two aligned three-column groups, with a continuous center separator.
+        inventory.setItem(40, background);
+        inventory.setItem(49, background);
+        inventory.setItem(39, button(Material.WRITABLE_BOOK, "How to record", NamedTextColor.AQUA,
                 "1. Hold an instrument in your off-hand.", "2. Click a track and wait for the count-in.",
                 "3. Play normally with keys 1-8.", "4. Open this station again and click Stop.",
                 "5. Listen to the take, then Keep or Discard.", "6. Add tracks and publish on a blank disc."));
@@ -125,29 +128,29 @@ public final class StudioMenu implements Listener {
                     "Click to toggle this track's sound.", saved == null ? "No saved take yet." : "Its notes and timing are preserved."));
         }
         boolean pending = project.pending() != null;
-        inventory.setItem(37, button(Material.REDSTONE_BLOCK, "Stop", NamedTextColor.RED,
+        inventory.setItem(38, button(Material.REDSTONE_BLOCK, "Stop", NamedTextColor.RED,
                 activity.recording() ? "Finish this recording and save its take." : "Stop the private preview.", "Existing audio samples finish naturally."));
-        inventory.setItem(39, button(Material.JUKEBOX, "Listen to saved mix", NamedTextColor.AQUA, "Hear all saved, audible tracks together."));
-        inventory.setItem(40, button(pending ? Material.NOTE_BLOCK : Material.GRAY_DYE, "Listen to new take", pending ? NamedTextColor.YELLOW : NamedTextColor.GRAY,
+        inventory.setItem(37, button(Material.JUKEBOX, "Listen to saved mix", NamedTextColor.AQUA, "Hear all saved, audible tracks together."));
+        inventory.setItem(41, button(Material.NOTE_BLOCK, "Listen to new take", pending ? NamedTextColor.YELLOW : NamedTextColor.GRAY,
                 pending ? "Track " + project.pending().slot() + " with your other saved tracks." : "Record a take first."));
-        inventory.setItem(41, button(pending ? Material.EMERALD : Material.GRAY_DYE, "Keep take", pending ? NamedTextColor.GREEN : NamedTextColor.GRAY,
-                "Accept the new take and replace its previous track."));
-        inventory.setItem(43, button(pending ? Material.FLINT : Material.GRAY_DYE, "Discard take", pending ? NamedTextColor.RED : NamedTextColor.GRAY,
-                "Remove the pending take; keep the previous track."));
-        inventory.setItem(45, button(Material.NAME_TAG, "Song settings", NamedTextColor.GOLD,
+        inventory.setItem(42, button(Material.EMERALD, "Keep take", pending ? NamedTextColor.GREEN : NamedTextColor.GRAY,
+                pending ? "Accept the new take and replace its previous track." : "Record a take first."));
+        inventory.setItem(43, button(Material.FLINT, "Discard take", pending ? NamedTextColor.RED : NamedTextColor.GRAY,
+                pending ? "Remove the pending take; keep the previous track." : "Record a take first."));
+        inventory.setItem(46, button(Material.NAME_TAG, "Song settings", NamedTextColor.GOLD,
                 "Edit the title using an input field.", "Set tempo with a slider and toggle the metronome."));
-        inventory.setItem(46, button(Material.CLOCK, "Tempo: " + project.bpm() + " BPM", NamedTextColor.AQUA,
+        inventory.setItem(47, button(Material.CLOCK, "Tempo: " + project.bpm() + " BPM", NamedTextColor.AQUA,
                 "Left click: +5 BPM | Right click: -5 BPM", "Shift-click: open the settings slider.", "Recorded timing stays the same."));
-        inventory.setItem(47, button(Material.BELL, "Metronome: " + (project.metronome() ? "ON" : "OFF"), NamedTextColor.YELLOW,
+        inventory.setItem(48, button(Material.BELL, "Metronome: " + (project.metronome() ? "ON" : "OFF"), NamedTextColor.YELLOW,
                 "Click to toggle the private recording click."));
-        inventory.setItem(49, button(Material.MUSIC_DISC_13, "Publish song", NamedTextColor.GOLD,
+        inventory.setItem(51, button(Material.MUSIC_DISC_13, "Publish song", NamedTextColor.GOLD,
                 "Blank discs in your inventory: " + studio.blankDiscs(player), "Uses one blank disc from your inventory.",
                 "Published copies keep this edition forever.", "Keep or discard pending takes first."));
         inventory.setItem(50, button(Material.PAPER, "Prepare a blank disc", NamedTextColor.AQUA,
                 "Uses one ordinary music disc from your inventory.", "Then click Publish song."));
-        inventory.setItem(51, button(Material.HONEYCOMB, "Copy a recorded disc", NamedTextColor.YELLOW,
+        inventory.setItem(52, button(Material.HONEYCOMB, "Copy a recorded disc", NamedTextColor.YELLOW,
                 "Hold the recorded disc in your off-hand.", "Uses one blank disc from your inventory."));
-        inventory.setItem(53, button(Material.LAVA_BUCKET, "New song", NamedTextColor.RED,
+        inventory.setItem(0, button(Material.LAVA_BUCKET, "New song", NamedTextColor.RED,
                 "Clear your editable project after confirmation.", "Published discs keep their songs."));
         holder.project = project;
         holder.activity = activity;
@@ -207,27 +210,27 @@ public final class StudioMenu implements Listener {
                     }
                 }
                 switch (raw) {
-                    case 0 -> { player.sendMessage("Use the colored track cards to record. Volume and mute controls are directly below each track."); return; }
-                    case 4, 45 -> { dialogs.settings(player, holder.station); return; }
-                    case 37 -> studio.stop(player);
-                    case 39 -> studio.preview(player, false);
-                    case 40 -> studio.preview(player, true);
-                    case 41 -> studio.edit(player, studio.requireProject(player).accept());
+                    case 0 -> { dialogs.reset(player, holder.station); return; }
+                    case 39 -> { player.sendMessage("Use the colored track cards to record. Volume and mute controls are directly below each track."); return; }
+                    case 4, 46 -> { dialogs.settings(player, holder.station); return; }
+                    case 38 -> studio.stop(player);
+                    case 37 -> studio.preview(player, false);
+                    case 41 -> studio.preview(player, true);
+                    case 42 -> studio.edit(player, studio.requireProject(player).accept());
                     case 43 -> studio.edit(player, studio.requireProject(player).discard());
-                    case 46 -> {
+                    case 47 -> {
                         if (click.isShiftClick()) { dialogs.settings(player, holder.station); return; }
                         Project project = studio.requireProject(player);
                         studio.edit(player, new Project(project.song(), project.pending(),
                                 Math.clamp(project.bpm() + (click.isRightClick() ? -5 : 5), 40, 240), project.metronome()));
                     }
-                    case 47 -> {
+                    case 48 -> {
                         Project project = studio.requireProject(player);
                         studio.edit(player, new Project(project.song(), project.pending(), project.bpm(), !project.metronome()));
                     }
-                    case 49 -> studio.publishFromInventory(player);
+                    case 51 -> studio.publishFromInventory(player);
                     case 50 -> studio.prepareBlankFromInventory(player);
-                    case 51 -> studio.copyFromInventory(player);
-                    case 53 -> { dialogs.reset(player, holder.station); return; }
+                    case 52 -> studio.copyFromInventory(player);
                     default -> { return; }
                 }
                 render(player, holder);

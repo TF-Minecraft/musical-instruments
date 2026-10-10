@@ -129,7 +129,7 @@ class StudioMenuTest {
 
     @Test
     void publishingUsesInventoryDiscs() throws Exception {
-        click(49, ClickType.LEFT);
+        click(51, ClickType.LEFT);
         executeClick();
         verify(studio).publishFromInventory(player);
         verify(studio, never()).publish(player);
@@ -137,7 +137,7 @@ class StudioMenuTest {
 
     @Test
     void settingsOpensTheInputForm() throws Exception {
-        click(45, ClickType.LEFT);
+        click(46, ClickType.LEFT);
         executeClick();
         verify(dialogs).settings(player, new Location(world, 0, 0, 0));
     }
@@ -145,7 +145,7 @@ class StudioMenuTest {
     @Test
     void bottomShiftClicksNumberKeysDoubleClicksAndDragsCannotMoveMenuItems() {
         for (var type : List.of(ClickType.NUMBER_KEY, ClickType.DOUBLE_CLICK, ClickType.DROP)) {
-            verify(click(49, type)).setCancelled(true);
+            verify(click(51, type)).setCancelled(true);
         }
         verify(click(54, ClickType.SHIFT_LEFT)).setCancelled(true);
         InventoryDragEvent drag = mock(InventoryDragEvent.class);
