@@ -156,6 +156,7 @@ class KeyboardServiceTest {
         assertEquals("lute", played.getFirst().getInstrument());
         assertEquals(1, ((WorldMock) player.getWorld()).getSpawnedParticles().size());
         verify(plugin).recordInstrumentPlay("lute");
+        verify(plugin).captureNote(player, "lute", "lute_4", 4.0f, 1.0f); // kept during a studio take
         assertEquals(2, sent()); // lit at once
 
         service.tick(); // same tick: nothing more
@@ -210,6 +211,10 @@ class KeyboardServiceTest {
         assertEquals(0.5f, player.getHeardSounds().get(1).getPitch());
         assertEquals(2, played.size()); // one play per click
         verify(plugin, times(2)).recordInstrumentPlay("lute");
+        // A studio take keeps every note of the chord.
+        verify(plugin).captureNote(player, "lute", "lute_1", 4.0f, 0.5f);
+        verify(plugin).captureNote(player, "lute", "lute_3", 4.0f, 0.5f);
+        verify(plugin).captureNote(player, "lute", "lute_5", 4.0f, 0.5f);
 
         // The chord's three circles flash, then the keyboard rests again.
         int before = sent();

@@ -113,6 +113,7 @@ class InstrumentListenerTest {
         assertEquals(1, particle.count());
 
         verify(plugin).recordInstrumentPlay("lute");
+        verify(plugin).captureNote(player, "lute", "instruments.lute_2d_single", 4.0f, 0.5f);
         InstrumentPlayEvent note = played.getFirst();
         assertSame(player, note.getPlayer());
         assertEquals("lute", note.getInstrument());

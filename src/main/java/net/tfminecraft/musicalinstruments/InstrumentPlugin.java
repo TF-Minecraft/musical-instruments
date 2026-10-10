@@ -11,11 +11,18 @@ import net.tfminecraft.musicalinstruments.keyboard.KeyboardService;
 import net.tfminecraft.musicalinstruments.keyboard.KeyboardSettings;
 import net.tfminecraft.musicalinstruments.listeners.InstrumentListener;
 import net.tfminecraft.musicalinstruments.managers.InstrumentManager;
+import net.tfminecraft.musicalinstruments.studio.StudioCommand;
+import net.tfminecraft.musicalinstruments.studio.StudioListener;
+import net.tfminecraft.musicalinstruments.studio.StudioMenu;
+import net.tfminecraft.musicalinstruments.studio.StudioService;
+import org.bukkit.entity.Player;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 
 // ====================================
 // Main plugin class for MusicalInstruments.
@@ -26,6 +33,8 @@ public class InstrumentPlugin extends JavaPlugin {
 
     private InstrumentManager manager;
     private KeyboardService keyboard;
+    private StudioService studio;
+    private StudioMenu studioMenu;
 
     // Play counts since the last bStats submission.
     // Written by the listener and drained when bStats collects chart data every 30 minutes.
@@ -44,6 +53,23 @@ public class InstrumentPlugin extends JavaPlugin {
         // Resolve instrument templates on the first tick, after every plugin
         // (MMOItems, ItemsAdder, Nexo) has finished enabling and registered its items.
         getServer().getScheduler().runTask(this, manager::loadTemplates);
+
+        // The studio starts first: both the hotbar listener and the keyboard hand it their notes.
+        try {
+            studio = new StudioService(this, manager);
+        } catch (IOException ex) {
+            getLogger().log(Level.SEVERE, "Could not initialize recording studio", ex);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        // ItemsAdder can enable after this plugin despite the softdepend, so check the station on the first tick.
+        getServer().getScheduler().runTask(this, () -> studio.station().warnIfUnavailable(getLogger()));
+        studioMenu = new StudioMenu(this, studio);
+        StudioCommand musicCommand = new StudioCommand(studio, studioMenu);
+        getCommand("music").setExecutor(musicCommand);
+        getCommand("music").setTabCompleter(musicCommand);
+        getServer().getPluginManager().registerEvents(studioMenu, this);
+        getServer().getPluginManager().registerEvents(new StudioListener(studio, studioMenu), this);
 
         InstrumentCommand commandHandler = new InstrumentCommand(this, manager);
         getCommand("instruments").setExecutor(commandHandler);
@@ -95,6 +121,12 @@ public class InstrumentPlugin extends JavaPlugin {
         if (keyboard != null) {
             keyboard.close();
         }
+        if (studioMenu != null) {
+            studioMenu.close();
+        }
+        if (studio != null) {
+            studio.close();
+        }
     }
 
     public KeyboardService getKeyboard() {
@@ -104,5 +136,10 @@ public class InstrumentPlugin extends JavaPlugin {
     public void recordInstrumentPlay(String instrument) {
         playCounts.computeIfAbsent(instrument, k -> new AtomicInteger()).incrementAndGet();
         totalPlays.incrementAndGet();
+    }
+
+    // Hands a played note to the recording studio, which keeps it only during a take.
+    public void captureNote(Player player, String instrument, String sound, float volume, float pitch) {
+        studio.capture(player, instrument, sound, volume, pitch);
     }
 }
