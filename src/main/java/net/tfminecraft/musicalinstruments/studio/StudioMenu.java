@@ -316,7 +316,7 @@ public final class StudioMenu implements Listener {
 
     private void refresh() {
         for (Player player : plugin.getServer().getOnlinePlayers()) {
-            if (!(player.getOpenInventory().getTopInventory().getHolder() instanceof Holder holder)) continue;
+            if (!(open(player) instanceof Holder holder)) continue;
             try {
                 if (!holder.owner.equals(player.getUniqueId())) { player.closeInventory(); continue; }
                 requireStation(player, holder.station);
@@ -343,8 +343,13 @@ public final class StudioMenu implements Listener {
     public void close() {
         refresher.cancel();
         for (Player player : plugin.getServer().getOnlinePlayers()) {
-            if (player.getOpenInventory().getTopInventory().getHolder() instanceof Holder) player.closeInventory();
+            if (open(player) instanceof Holder) player.closeInventory();
         }
+    }
+
+    // The holder of the player's open container; MockBukkit reports no top inventory when none is open.
+    private static InventoryHolder open(Player player) {
+        return player.getOpenInventory().getTopInventory() instanceof Inventory top ? top.getHolder() : null;
     }
 
     private static final class Holder implements InventoryHolder {

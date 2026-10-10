@@ -1,6 +1,7 @@
 package net.tfminecraft.musicalinstruments.studio;
 
 import net.tfminecraft.musicalinstruments.InstrumentPlugin;
+import net.tfminecraft.musicalinstruments.managers.InstrumentManager;
 import org.bukkit.Location;
 import org.bukkit.Effect;
 import org.bukkit.Material;
@@ -35,6 +36,7 @@ import java.util.logging.Level;
 public final class StudioService {
     public static final int MAX_PROJECTS = 36;
     private final InstrumentPlugin plugin;
+    private final InstrumentManager manager;
     private final StudioStore store;
     private final StudioSettings settings;
     private final DiscItems discs;
@@ -53,8 +55,8 @@ public final class StudioService {
             Thread.ofPlatform().daemon(true).name("musical-instruments-checkpoints").factory());
     private long clock;
 
-    public StudioService(InstrumentPlugin plugin) throws IOException {
-        this(plugin, new StudioStore(plugin.getDataFolder().toPath().resolve("studio")),
+    public StudioService(InstrumentPlugin plugin, InstrumentManager manager) throws IOException {
+        this(plugin, manager, new StudioStore(plugin.getDataFolder().toPath().resolve("studio")),
                 loadSettings(plugin), new DiscItems(plugin));
     }
 
@@ -71,8 +73,9 @@ public final class StudioService {
         return StudioSettings.read(yaml);
     }
 
-    StudioService(InstrumentPlugin plugin, StudioStore store, StudioSettings settings, DiscItems discs) {
+    StudioService(InstrumentPlugin plugin, InstrumentManager manager, StudioStore store, StudioSettings settings, DiscItems discs) {
         this.plugin = plugin;
+        this.manager = manager;
         this.settings = settings;
         this.store = store;
         this.discs = discs;
@@ -198,7 +201,7 @@ public final class StudioService {
         if (slot < 1 || slot > settings.tracks()) {
             throw new IllegalArgumentException("Track must be between 1 and " + settings.tracks());
         }
-        if (plugin.getManager().getInstrument(player.getInventory().getItemInOffHand()) == null) {
+        if (manager.getInstrument(player.getInventory().getItemInOffHand()) == null) {
             throw new IllegalArgumentException("Hold an instrument in your off-hand");
         }
         previews.remove(player.getUniqueId());

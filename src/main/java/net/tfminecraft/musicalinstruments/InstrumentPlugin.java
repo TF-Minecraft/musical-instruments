@@ -7,18 +7,22 @@ import org.bstats.charts.SingleLineChart;
 import org.bukkit.plugin.java.JavaPlugin;
 import net.tfminecraft.musicalinstruments.commands.InstrumentCommand;
 import net.tfminecraft.musicalinstruments.items.ItemResolver;
+import net.tfminecraft.musicalinstruments.keyboard.KeyboardService;
+import net.tfminecraft.musicalinstruments.keyboard.KeyboardSettings;
 import net.tfminecraft.musicalinstruments.listeners.InstrumentListener;
 import net.tfminecraft.musicalinstruments.managers.InstrumentManager;
 import net.tfminecraft.musicalinstruments.studio.StudioCommand;
 import net.tfminecraft.musicalinstruments.studio.StudioListener;
 import net.tfminecraft.musicalinstruments.studio.StudioMenu;
 import net.tfminecraft.musicalinstruments.studio.StudioService;
+import org.bukkit.entity.Player;
 
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 
 // ====================================
 // Main plugin class for MusicalInstruments.
@@ -27,31 +31,43 @@ public class InstrumentPlugin extends JavaPlugin {
 
     private static final int BSTATS_PLUGIN_ID = 33322;
 
-    private static InstrumentPlugin instance;
-    private ItemResolver itemResolver;
     private InstrumentManager manager;
+    private KeyboardService keyboard;
     private StudioService studio;
     private StudioMenu studioMenu;
 
     // Play counts since the last bStats submission.
-    // Written from the main thread (listener), read and reset from the bStats submit thread every 30 minutes.
+    // Written by the listener and drained when bStats collects chart data every 30 minutes.
+    // bStats collects on the main thread, but its Folia path collects on its own thread, so keep these atomic.
     private final Map<String, AtomicInteger> playCounts = new ConcurrentHashMap<>();
     private final AtomicInteger totalPlays = new AtomicInteger();
 
     @Override
     public void onEnable() {
-        instance = this;
         getLogger().info("MusicalInstruments is enabled!");
 
         saveDefaultConfig();
 
-        itemResolver = new ItemResolver(getLogger());
-
-        manager = new InstrumentManager(this, itemResolver);
+        manager = new InstrumentManager(this, new ItemResolver(getLogger()));
 
         // Resolve instrument templates on the first tick, after every plugin
         // (MMOItems, ItemsAdder, Nexo) has finished enabling and registered its items.
         getServer().getScheduler().runTask(this, manager::loadTemplates);
+
+        // The studio starts first: both the hotbar listener and the keyboard hand it their notes.
+        try {
+            studio = new StudioService(this, manager);
+        } catch (IOException ex) {
+            getLogger().log(Level.SEVERE, "Could not initialize recording studio", ex);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        studioMenu = new StudioMenu(this, studio);
+        StudioCommand musicCommand = new StudioCommand(studio, studioMenu);
+        getCommand("music").setExecutor(musicCommand);
+        getCommand("music").setTabCompleter(musicCommand);
+        getServer().getPluginManager().registerEvents(studioMenu, this);
+        getServer().getPluginManager().registerEvents(new StudioListener(studio, studioMenu), this);
 
         InstrumentCommand commandHandler = new InstrumentCommand(this, manager);
         getCommand("instruments").setExecutor(commandHandler);
@@ -60,19 +76,12 @@ public class InstrumentPlugin extends JavaPlugin {
         // Register event listeners
         getServer().getPluginManager().registerEvents(new InstrumentListener(this, manager), this);
 
-        try {
-            studio = new StudioService(this);
-            StudioMenu menu = new StudioMenu(this, studio);
-            studioMenu = menu;
-            StudioCommand musicCommand = new StudioCommand(studio, menu);
-            getCommand("music").setExecutor(musicCommand);
-            getCommand("music").setTabCompleter(musicCommand);
-            getServer().getPluginManager().registerEvents(menu, this);
-            getServer().getPluginManager().registerEvents(new StudioListener(studio, menu), this);
-        } catch (IOException ex) {
-            getLogger().log(java.util.logging.Level.SEVERE, "Could not initialize recording studio", ex);
-            getServer().getPluginManager().disablePlugin(this);
-            return;
+        // On-screen 7 x 3 keyboard (needs the tfmc_instruments:keyboard font in the resource pack).
+        KeyboardSettings keyboardSettings = KeyboardSettings.load(this);
+        keyboard = keyboardSettings.enabled() ? new KeyboardService(this, manager, keyboardSettings) : null;
+        if (keyboard != null) {
+            getServer().getPluginManager().registerEvents(keyboard, this);
+            keyboard.start();
         }
 
         setupMetrics();
@@ -105,24 +114,30 @@ public class InstrumentPlugin extends JavaPlugin {
         }));
     }
 
-    public void recordInstrumentPlay(String instrument) {
-        playCounts.computeIfAbsent(instrument, k -> new AtomicInteger()).incrementAndGet();
-        totalPlays.incrementAndGet();
-    }
-
     @Override
     public void onDisable() {
+        if (keyboard != null) {
+            keyboard.close();
+        }
         if (studioMenu != null) {
             studioMenu.close();
         }
         if (studio != null) {
             studio.close();
         }
-        getLogger().info("MusicalInstruments is disabled!");
     }
 
-    public static InstrumentPlugin getInstance() { return instance; }
-    public ItemResolver getItemResolver() { return itemResolver; }
-    public InstrumentManager getManager() { return manager; }
-    public StudioService getStudio() { return studio; }
+    public KeyboardService getKeyboard() {
+        return keyboard;
+    }
+
+    public void recordInstrumentPlay(String instrument) {
+        playCounts.computeIfAbsent(instrument, k -> new AtomicInteger()).incrementAndGet();
+        totalPlays.incrementAndGet();
+    }
+
+    // Hands a played note to the recording studio, which keeps it only during a take.
+    public void captureNote(Player player, String instrument, String sound, float volume, float pitch) {
+        studio.capture(player, instrument, sound, volume, pitch);
+    }
 }

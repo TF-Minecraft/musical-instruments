@@ -20,15 +20,6 @@ Sounds play at the performer's location for nearby listeners, while floating not
 - **Custom instrument items** — supports vanilla items and instrument items from MMOItems, ItemsAdder, and Nexo.
 - **In-game note reference** — players can view the keybind layout for the instrument they are holding.
 
-## License
-
-MusicalInstruments is distributed under the [Artistic License 2.0](LICENSE).
-
-Copyright (c) 2026 Justinas Launikonis.
-Copyright (c) 2026 TF-Minecraft contributors.
-
-Third-party dependencies retain their own licenses.
-
 ## Credits
 
 Created by [Justinas Launikonis](https://github.com/JustinasLa).
@@ -60,3 +51,22 @@ music disc with `/music blank`, then hold it in your main hand and use
 `/music publish`. `/music help` lists the recording commands.
 
 Technical documentation is maintained in [TF-Minecraft/Docs](https://github.com/TF-Minecraft/Docs).
+
+## Tests and coverage
+
+With Java 21 installed, run `mvn clean verify`. Tests use JUnit 5, Mockito, and
+MockBukkit for playback, commands, item resolution, configuration, and lifecycle
+behaviour. Surefire writes test results to `target/surefire-reports/`; JaCoCo
+writes HTML and XML reports to `target/site/jacoco/`. Verification requires 100%
+instruction and branch coverage, with no production-code exclusions. Tests use
+stand-ins for item plugins; live integrations and resource-pack audio still
+need Minecraft server and client testing.
+
+## License
+
+MusicalInstruments is distributed under the [Artistic License 2.0](LICENSE).
+
+Copyright (c) 2026 Justinas Launikonis.
+Copyright (c) 2026 TF-Minecraft contributors.
+
+Third-party dependencies retain their own licenses.

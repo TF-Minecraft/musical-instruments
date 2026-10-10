@@ -1,6 +1,7 @@
 package net.tfminecraft.musicalinstruments.managers;
 
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import net.tfminecraft.musicalinstruments.InstrumentPlugin;
 import net.tfminecraft.musicalinstruments.items.ItemResolver;
 
@@ -18,11 +19,13 @@ public class InstrumentManager {
     private final InstrumentPlugin plugin;
     private final ItemResolver itemResolver;
     private final Map<String, ItemStack> templates;
+    private final Map<String, ItemStack> cosmeticFreeTemplates;
 
     public InstrumentManager(InstrumentPlugin plugin, ItemResolver itemResolver) {
         this.plugin = plugin;
         this.itemResolver = itemResolver;
         this.templates = new LinkedHashMap<>();
+        this.cosmeticFreeTemplates = new LinkedHashMap<>();
     }
 
     // ====================================
@@ -33,6 +36,7 @@ public class InstrumentManager {
     // ====================================
     public void loadTemplates() {
         templates.clear();
+        cosmeticFreeTemplates.clear();
 
         for (String instrument : plugin.getConfig().getKeys(false)) {
             String configPath = plugin.getConfig().getString(instrument + ".item");
@@ -47,8 +51,16 @@ public class InstrumentManager {
                     plugin.getLogger().warning("Could not resolve item '" + configPath + "' for instrument '" + instrument + "'.");
                     continue;
                 }
+                // Air in the off-hand never counts as an instrument, so it could not be played.
+                if (template.getType().isAir()) {
+                    plugin.getLogger().warning("Item '" + configPath + "' for instrument '" + instrument + "' is air.");
+                    continue;
+                }
 
+                ItemStack cosmeticFree = withoutCosmetics(template);
                 templates.put(instrument, template);
+                cosmeticFreeTemplates.put(instrument, cosmeticFree);
+                warnAboutResetSlot(instrument);
             } catch (Exception e) {
                 plugin.getLogger().warning("Failed to load instrument '" + instrument + "': " + e.getMessage());
             }
@@ -61,7 +73,7 @@ public class InstrumentManager {
     // Gets the instrument ID from an ItemStack.
     // ====================================
     public String getInstrument(ItemStack item) {
-        if (item == null) {
+        if (item == null || item.getType().isAir()) {
             return null;
         }
 
@@ -71,7 +83,39 @@ public class InstrumentManager {
             }
         }
 
-        return null;
+        // Preserve exact matches before allowing namestone/lorestone edits.
+        ItemStack cosmeticFree = withoutCosmetics(item);
+        String match = null;
+        for (Map.Entry<String, ItemStack> entry : cosmeticFreeTemplates.entrySet()) {
+            if (cosmeticFree.isSimilar(entry.getValue())) {
+                // Name/lore-only variants cannot be distinguished after a cosmetic edit.
+                if (match != null) {
+                    return null;
+                }
+                match = entry.getKey();
+            }
+        }
+        return match;
+    }
+
+    // Playing a note returns the player to slot 9, so notes mapped there cannot be played.
+    private void warnAboutResetSlot(String instrument) {
+        for (String key : new String[] {"9", "9+sneak"}) {
+            if (plugin.getConfig().contains(instrument + ".hotbar-sounds." + key)) {
+                plugin.getLogger().warning("Instrument '" + instrument + "' maps hotbar-sounds." + key
+                        + ", but slot 9 is where the hotbar resets after each note, so it is ignored.");
+            }
+        }
+    }
+
+    // Only called with non-air items, which always have item meta.
+    private static ItemStack withoutCosmetics(ItemStack item) {
+        ItemStack copy = item.clone();
+        ItemMeta meta = copy.getItemMeta();
+        meta.displayName(null);
+        meta.lore(null);
+        copy.setItemMeta(meta);
+        return copy;
     }
 
     // Gets the sound key for an instrument slot and sneak state.
@@ -86,6 +130,19 @@ public class InstrumentManager {
     public double getVolume(String instrument) { return plugin.getConfig().getDouble(instrument + ".hotbar-sounds.volume", 1.0);}
     public double getPitch(String instrument){ return plugin.getConfig().getDouble(instrument + ".hotbar-sounds.pitch", 1.0); }
     public Set<String> getAllInstruments() { return Collections.unmodifiableSet(templates.keySet()); }
+
+    // Finds a loaded instrument by name, preferring an exact match over a case-insensitive one.
+    public String findInstrument(String name) {
+        if (templates.containsKey(name)) {
+            return name;
+        }
+        for (String instrument : templates.keySet()) {
+            if (instrument.equalsIgnoreCase(name)) {
+                return instrument;
+            }
+        }
+        return null;
+    }
 
     // Gets a copy of an instrument's cached item template.
     public ItemStack getInstrumentItem(String instrument) {

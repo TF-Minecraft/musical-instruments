@@ -64,7 +64,6 @@ class StudioServiceTest {
         InstrumentManager manager = mock(InstrumentManager.class);
         when(plugin.getServer()).thenReturn(server);
         when(plugin.getLogger()).thenReturn(Logger.getAnonymousLogger());
-        when(plugin.getManager()).thenReturn(manager);
         when(manager.getInstrument(any())).thenReturn("lute");
         when(server.getScheduler()).thenReturn(scheduler);
         when(server.getPluginManager()).thenReturn(pluginManager);
@@ -78,7 +77,7 @@ class StudioServiceTest {
         when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
         when(world.getPlayers()).thenReturn(List.of(player));
         when(scheduler.runTaskTimer(eq(plugin), any(Runnable.class), eq(1L), eq(1L))).thenReturn(task);
-        studio = new StudioService(plugin, store, new StudioSettings(4, 40, 20, 60, 8, 32, 2, 0, 2), discs);
+        studio = new StudioService(plugin, manager, store, new StudioSettings(4, 40, 20, 60, 8, 32, 2, 0, 2), discs);
         var callback = ArgumentCaptor.forClass(Runnable.class);
         verify(scheduler).runTaskTimer(eq(plugin), callback.capture(), eq(1L), eq(1L));
         tick = callback.getValue();
