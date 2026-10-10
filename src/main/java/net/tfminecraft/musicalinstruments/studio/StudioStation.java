@@ -52,10 +52,7 @@ public final class StudioStation {
             return none();
         }
         if (type.equals("ia")) {
-            if (!pluginEnabled("ItemsAdder")) {
-                logger.warning("Studio station '" + path + "' requires ItemsAdder, which is not installed.");
-                return none();
-            }
+            // ItemsAdder may enable after this plugin; warnIfUnavailable checks it once all have.
             return itemsAdder(parts[1]);
         }
         Material material = Material.matchMaterial(parts[1].toLowerCase(Locale.ROOT));
@@ -73,6 +70,13 @@ public final class StudioStation {
 
     public boolean enabled() {
         return material != null || itemsAdderId != null;
+    }
+
+    /** Call after every plugin has enabled; until ItemsAdder is running, its stations match nothing. */
+    public void warnIfUnavailable(Logger logger) {
+        if (itemsAdderId != null && !pluginEnabled("ItemsAdder")) {
+            logger.warning("Studio station 'ia." + itemsAdderId + "' requires ItemsAdder, which is not enabled.");
+        }
     }
 
     /** True for the station block, or a block holding the station's custom block or furniture. */

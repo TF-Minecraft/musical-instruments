@@ -83,12 +83,22 @@ class StudioStationTest {
     }
 
     @Test
-    void itemsAdderStationsNeedItemsAdder() {
-        assertDisabled("ia.tfmc:music_station", "requires ItemsAdder");
+    void itemsAdderStationsAreKeptUntilItemsAdderHasHadTheChanceToEnable() {
+        // ItemsAdder can enable after this plugin, so parsing does not depend on it.
+        StudioStation station = parse("ia.tfmc:music_station");
+        assertTrue(station.enabled());
+        assertTrue(warnings.isEmpty());
+        station.warnIfUnavailable(logger);
+        assertTrue(warnings.getFirst().contains("requires ItemsAdder"), warnings.toString());
+
+        warnings.clear();
         var itemsAdder = MockBukkit.createMockPlugin("ItemsAdder");
-        assertTrue(parse("ia.tfmc:music_station").enabled());
+        station.warnIfUnavailable(logger);
+        StudioStation.vanilla(Material.LOOM).warnIfUnavailable(logger);
+        assertTrue(warnings.isEmpty(), warnings.toString());
         MockBukkit.getMock().getPluginManager().disablePlugin(itemsAdder);
-        assertDisabled("ia.tfmc:music_station", "requires ItemsAdder");
+        station.warnIfUnavailable(logger);
+        assertTrue(warnings.getFirst().contains("requires ItemsAdder"), warnings.toString());
     }
 
     @Test
