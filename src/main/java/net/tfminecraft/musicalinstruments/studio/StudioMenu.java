@@ -56,7 +56,7 @@ public final class StudioMenu implements Listener {
         Holder holder = new Holder(player.getUniqueId(), station == null ? null : station.getLocation(), screen, page, projectId);
         holder.inventory = plugin.getServer().createInventory(holder, screen == Screen.SETTINGS ? 27 : 54,
                 Component.text(screen == Screen.LIBRARY ? "\u266b Your song projects" : screen == Screen.SETTINGS
-                        ? "\u266b Project settings" : "\u266b Recording Studio", NamedTextColor.DARK_PURPLE));
+                        ? "\u266b Song settings" : "\u266b Recording Studio", NamedTextColor.DARK_GRAY));
         render(player, holder);
         player.openInventory(holder.inventory);
     }
@@ -64,21 +64,23 @@ public final class StudioMenu implements Listener {
     private void render(Player player, Holder holder) throws IOException {
         Inventory inventory = holder.inventory;
         int size = holder.screen == Screen.SETTINGS ? 27 : 54;
-        ItemStack background = button(Material.BLACK_STAINED_GLASS_PANE, " ", NamedTextColor.DARK_GRAY);
-        ItemStack frame = button(Material.PURPLE_STAINED_GLASS_PANE, " ", NamedTextColor.DARK_PURPLE);
+        ItemStack background = button(holder.screen != Screen.SETTINGS ? Material.LIGHT_GRAY_STAINED_GLASS_PANE
+                : Material.BROWN_STAINED_GLASS_PANE, " ", NamedTextColor.DARK_GRAY);
+        ItemStack frame = button(holder.screen != Screen.SETTINGS ? Material.BROWN_STAINED_GLASS_PANE
+                : Material.LIGHT_GRAY_STAINED_GLASS_PANE, " ", NamedTextColor.GRAY);
         for (int index = 0; index < size; index++) inventory.setItem(index, index < 9 || index >= size - 9 ? frame : background);
         holder.choices.clear();
         if (holder.screen == Screen.LIBRARY) { renderLibrary(player, holder); return; }
-        inventory.setItem(8, button(Material.BARRIER, "Close studio", NamedTextColor.GRAY));
+        inventory.setItem(8, button(Material.BARRIER, "Close", NamedTextColor.GRAY));
         Project project = studio.requireProject(player);
         if (!project.song().id().equals(holder.projectId)) throw new IllegalArgumentException("The active project changed. Open it again from your projects");
         StudioService.Activity activity = studio.activity(player);
         String status = activity.recording() ? "Recording track " + activity.track() + " | " + time(activity.seconds() * 20)
                 : activity.previewing() ? "Listening" : "Ready";
-        inventory.setItem(0, button(Material.ARROW, holder.screen == Screen.SETTINGS ? "Back to recording" : "All projects", NamedTextColor.AQUA));
+        inventory.setItem(0, button(Material.ARROW, holder.screen == Screen.SETTINGS ? "Back to recording" : "All projects", NamedTextColor.GOLD));
         inventory.setItem(4, button(Material.MUSIC_DISC_5, project.song().title(), NamedTextColor.GOLD,
                 "By " + project.song().author(), status, project.song().tracks().size() + " saved tracks | " + time(project.song().lengthTicks()),
-                "Click for project settings."));
+                "Click for song settings."));
         if (holder.screen == Screen.EDITOR) renderTracks(player, holder, project, activity);
         else renderSettings(holder, project);
         holder.project = project;
@@ -98,7 +100,7 @@ public final class StudioMenu implements Listener {
                     project.pending() == null ? "No pending take" : "Pending take on track " + project.pending().slot(),
                     "Left-click: open this project.", "Right-click: delete with confirmation.");
         }
-        if (projects.isEmpty()) inventoryItem(holder, 22, Material.WRITABLE_BOOK, "Your studio is empty", NamedTextColor.AQUA,
+        if (projects.isEmpty()) inventoryItem(holder, 22, Material.WRITABLE_BOOK, "Your studio is empty", NamedTextColor.GOLD,
                 "Create your first song with the green button below.");
         boolean full = projects.size() >= StudioService.MAX_PROJECTS;
         inventoryItem(holder, 49, full ? Material.REDSTONE_BLOCK : Material.EMERALD_BLOCK,
@@ -130,14 +132,14 @@ public final class StudioMenu implements Listener {
                     saved == null ? "" : "Instruments: " + String.join(", ", saved.notes().stream().map(Note::instrument).distinct().toList()),
                     "Click to record; other saved tracks are your backing.");
             float gain = saved == null ? 1 : saved.gain();
-            inventoryItem(holder, base + 2, Material.COMPARATOR, "Track " + slot + " volume: " + Math.round(gain * 100) + "%", NamedTextColor.AQUA,
+            inventoryItem(holder, base + 2, Material.COMPARATOR, "Track " + slot + " volume: " + Math.round(gain * 100) + "%", NamedTextColor.GOLD,
                     "Left: +25% | Right: -25% | Shift: 100%", saved == null ? "Keep a take before mixing." : "Only this track is changed.");
             boolean muted = saved != null && saved.muted();
             inventoryItem(holder, base + 3, muted ? Material.RED_DYE : Material.LIME_DYE,
                     "Track " + slot + (muted ? ": muted" : ": audible"), muted ? NamedTextColor.RED : NamedTextColor.GREEN,
                     "Click to toggle this track's sound.");
-            inventoryItem(holder, base + 4, Material.JUKEBOX, "Listen to track " + slot, NamedTextColor.AQUA,
-                    "Hear only this saved track.", "Use Listen to full mix below to hear the whole song.");
+            inventoryItem(holder, base + 4, Material.JUKEBOX, "Listen to track " + slot, NamedTextColor.GOLD,
+                    "Hear only this saved track.", "Use Listen to full song below to hear the whole song.");
             inventoryItem(holder, base + 5, Material.NOTE_BLOCK, "Listen to take " + slot, pending ? NamedTextColor.YELLOW : NamedTextColor.GRAY,
                     pending ? "Hear this new take with the saved backing tracks." : "No pending take on this track.");
             inventoryItem(holder, base + 6, Material.EMERALD, "Keep take " + slot, pending ? NamedTextColor.GREEN : NamedTextColor.GRAY,
@@ -145,24 +147,24 @@ public final class StudioMenu implements Listener {
             inventoryItem(holder, base + 7, Material.FLINT, "Discard take " + slot, pending ? NamedTextColor.RED : NamedTextColor.GRAY,
                     pending ? "Keep the previous saved version." : "No pending take on this track.");
         }
-        if (holder.page > 0) inventoryItem(holder, 45, Material.ARROW, "Previous tracks", NamedTextColor.AQUA);
-        inventoryItem(holder, 49, Material.WRITABLE_BOOK, "Recording guide", NamedTextColor.AQUA,
+        if (holder.page > 0) inventoryItem(holder, 45, Material.ARROW, "Previous tracks", NamedTextColor.GOLD);
+        inventoryItem(holder, 49, Material.WRITABLE_BOOK, "Recording guide", NamedTextColor.GOLD,
                 "Each row controls one track.", "Hold your instrument and click Record.", "Off-hand: hotbar notes. Hand: right-click for the keyboard.",
                 "Reopen your project to stop; then listen, keep or discard.", "The bottom bar controls the whole project.");
-        inventoryItem(holder, 47, Material.JUKEBOX, "Listen to full mix", NamedTextColor.AQUA, "All saved, audible tracks in this project.");
+        inventoryItem(holder, 47, Material.JUKEBOX, "Listen to full song", NamedTextColor.GOLD, "All saved, audible tracks in this project.");
         inventoryItem(holder, 48, Material.REDSTONE_BLOCK, "Stop recording / preview", NamedTextColor.RED,
                 "Finish the active take or stop private listening.");
         inventoryItem(holder, 50, Material.MUSIC_DISC_13, "Publish full song", NamedTextColor.GOLD,
                 "Pick up one music disc and place it on this button.", "Overwrites that disc with the saved mix.",
                 "Recorded discs: click twice to confirm overwriting.", "Review pending takes first.");
-        inventoryItem(holder, 51, Material.NETHER_STAR, "Project settings", NamedTextColor.GOLD,
+        inventoryItem(holder, 51, Material.NETHER_STAR, "Song settings", NamedTextColor.GOLD,
                 "Edit the title, tempo and recording metronome.");
-        if (holder.page + 1 < holder.pages) inventoryItem(holder, 53, Material.ARROW, "More tracks", NamedTextColor.AQUA);
+        if (holder.page + 1 < holder.pages) inventoryItem(holder, 53, Material.ARROW, "More tracks", NamedTextColor.GOLD);
     }
 
     private void renderSettings(Holder holder, Project project) {
         inventoryItem(holder, 11, Material.NAME_TAG, "Title: " + project.song().title(), NamedTextColor.GOLD, "Click to rename this project.");
-        inventoryItem(holder, 13, Material.CLOCK, "Tempo: " + project.bpm() + " BPM", NamedTextColor.AQUA,
+        inventoryItem(holder, 13, Material.CLOCK, "Tempo: " + project.bpm() + " BPM", NamedTextColor.GOLD,
                 "Left: +5 BPM | Right: -5 BPM", "Shift: change by 1 BPM", "Controls recording clicks, not recorded note timing.");
         inventoryItem(holder, 15, Material.BELL, "Metronome: " + (project.metronome() ? "ON" : "OFF"), NamedTextColor.YELLOW,
                 "Click to hear or silence the metronome while recording.", "Only you hear it; clicks are never recorded.", "The count-in always plays.");
