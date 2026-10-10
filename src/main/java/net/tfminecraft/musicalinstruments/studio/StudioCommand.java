@@ -10,9 +10,10 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 public final class StudioCommand implements CommandExecutor, TabCompleter {
-    private static final List<String> EDIT = List.of("new", "title", "studio", "status", "record", "stop", "keep",
+    private static final List<String> EDIT = List.of("new", "title", "studio", "projects", "open", "status", "record", "stop", "keep",
             "discard", "preview", "volume", "mute", "remove", "bpm", "metronome", "blank", "publish", "reset", "help");
     private final StudioService studio;
     private final StudioMenu menu;
@@ -49,6 +50,19 @@ public final class StudioCommand implements CommandExecutor, TabCompleter {
                     player.sendMessage("Project renamed.");
                 }
                 case "studio" -> menu.open(player, player.getTargetBlockExact(5));
+                case "projects" -> {
+                    var projects = studio.listProjects(player);
+                    if (projects.isEmpty()) player.sendMessage("No projects yet. Open /music studio to create a song.");
+                    for (Project project : projects) player.sendMessage(project.song().title() + " | " + project.song().id());
+                }
+                case "open" -> {
+                    need(args, 2, "open <project-id>");
+                    UUID id;
+                    try { id = UUID.fromString(args[1]); }
+                    catch (IllegalArgumentException ex) { throw new IllegalArgumentException("Use a project ID from /music projects"); }
+                    studio.selectProject(player, id);
+                    player.sendMessage("Opened '" + studio.requireProject(player).song().title() + "'.");
+                }
                 case "record" -> {
                     need(args, 2, "record <track>");
                     studio.record(player, integer(args[1]));
@@ -135,7 +149,7 @@ public final class StudioCommand implements CommandExecutor, TabCompleter {
     }
 
     private void help(Player player) {
-        player.sendMessage("/music new <title> | studio | status | title <title>");
+        player.sendMessage("/music new <title> | studio | projects | open <project-id> | status | title <title>");
         player.sendMessage("/music record <track> | stop | preview [take] | keep | discard");
         player.sendMessage("/music volume <track> <0-2> | mute <track> | remove <track>");
         player.sendMessage("/music bpm <40-240> | metronome <on|off>");

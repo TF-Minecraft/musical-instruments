@@ -41,6 +41,7 @@ class StudioMenuTest {
     private final BukkitTask refreshTask = mock(BukkitTask.class);
     private StudioMenu menu;
     private Project project;
+    private Runnable queued;
 
     @BeforeEach
     void setup() throws Exception {
@@ -49,9 +50,13 @@ class StudioMenuTest {
         when(server.getScheduler()).thenReturn(scheduler);
         doReturn(List.of(player)).when(server).getOnlinePlayers();
         when(scheduler.runTaskTimer(eq(plugin), any(Runnable.class), eq(10L), eq(10L))).thenReturn(refreshTask);
-        when(server.createInventory(any(InventoryHolder.class), eq(54), any(Component.class))).thenAnswer(call -> {
+        when(server.createInventory(any(InventoryHolder.class), anyInt(), any(Component.class))).thenAnswer(call -> {
             when(inventory.getHolder()).thenReturn(call.getArgument(0));
             return inventory;
+        });
+        when(scheduler.runTask(eq(plugin), any(Runnable.class))).thenAnswer(call -> {
+            queued = call.getArgument(1);
+            return mock(BukkitTask.class);
         });
         when(player.getUniqueId()).thenReturn(UUID.randomUUID());
         when(player.hasPermission("instruments.record")).thenReturn(true);
@@ -71,12 +76,13 @@ class StudioMenuTest {
         project = new Project(new Song(UUID.randomUUID(), player.getUniqueId(), "Player", "Song", List.of(saved)), pending, 100, false);
         when(studio.project(player)).thenReturn(project);
         when(studio.requireProject(player)).thenReturn(project);
+        when(studio.listProjects(player)).thenReturn(List.of(project));
         when(studio.settings()).thenReturn(new StudioSettings(4, 40, 20, 60, 8, 32, 2, 0, 2));
         when(studio.activity(player)).thenReturn(new StudioService.Activity(0, 0, 0, 0, false));
         StudioIcons icons = mock(StudioIcons.class);
         when(icons.item(any(), any(), anyList())).thenReturn(mock(ItemStack.class));
         menu = new StudioMenu(plugin, studio, icons, dialogs);
-        menu.open(player, station);
+        menu.openProject(player, station);
     }
 
     private InventoryClickEvent click(int slot, ClickType type) {
@@ -90,14 +96,15 @@ class StudioMenuTest {
     }
 
     private void executeClick() {
-        var callback = ArgumentCaptor.forClass(Runnable.class);
-        verify(scheduler).runTask(eq(plugin), callback.capture());
-        callback.getValue().run();
+        assertNotNull(queued);
+        Runnable action = queued;
+        queued = null;
+        action.run();
     }
 
     @Test
     void trackClickRecordsAndClosesOnlyAfterTheInventoryEvent() throws Exception {
-        InventoryClickEvent event = click(12, ClickType.LEFT);
+        InventoryClickEvent event = click(18, ClickType.LEFT);
         verify(event).setCancelled(true);
         verify(studio, never()).record(any(), anyInt());
         executeClick();
@@ -107,7 +114,7 @@ class StudioMenuTest {
 
     @Test
     void volumeMixingPreservesNotesAndThePendingTake() throws Exception {
-        click(19, ClickType.RIGHT);
+        click(10, ClickType.RIGHT);
         executeClick();
         var edited = ArgumentCaptor.forClass(Project.class);
         verify(studio).edit(eq(player), edited.capture());
@@ -119,7 +126,7 @@ class StudioMenuTest {
 
     @Test
     void muteOnlyChangesTheSavedTrackMix() throws Exception {
-        click(28, ClickType.LEFT);
+        click(11, ClickType.LEFT);
         executeClick();
         var edited = ArgumentCaptor.forClass(Project.class);
         verify(studio).edit(eq(player), edited.capture());
@@ -129,7 +136,7 @@ class StudioMenuTest {
 
     @Test
     void publishingUsesInventoryDiscs() throws Exception {
-        click(51, ClickType.LEFT);
+        click(50, ClickType.LEFT);
         executeClick();
         verify(studio).publishFromInventory(player);
         verify(studio, never()).publish(player);
@@ -137,7 +144,7 @@ class StudioMenuTest {
 
     @Test
     void settingsOpensTheInputForm() throws Exception {
-        click(46, ClickType.LEFT);
+        click(4, ClickType.LEFT);
         executeClick();
         verify(dialogs).settings(player, new Location(world, 0, 0, 0));
     }
@@ -157,7 +164,7 @@ class StudioMenuTest {
 
     @Test
     void movingAwayBeforeTheDeferredClickCannotRecordOrLoadTheStationChunk() throws Exception {
-        click(10, ClickType.LEFT);
+        click(9, ClickType.LEFT);
         when(player.getLocation()).thenReturn(new Location(world, 100, 0, 0));
         executeClick();
         verify(studio, never()).record(any(), anyInt());
@@ -167,7 +174,7 @@ class StudioMenuTest {
 
     @Test
     void permissionRevocationPreventsADeferredRecording() throws Exception {
-        click(10, ClickType.LEFT);
+        click(9, ClickType.LEFT);
         when(player.hasPermission("instruments.record")).thenReturn(false);
         executeClick();
         verify(studio, never()).record(any(), anyInt());
@@ -178,5 +185,107 @@ class StudioMenuTest {
         menu.close();
         verify(refreshTask).cancel();
         verify(player).closeInventory();
+    }
+
+    @Test
+    void studioOpensAProjectLibraryAndSelectingASongOpensItsEditor() throws Exception {
+        menu.open(player, station);
+        verify(studio, never()).create(any(), anyString(), anyBoolean());
+        click(10, ClickType.LEFT);
+        executeClick();
+        verify(studio).selectProject(player, project.song().id());
+        click(18, ClickType.LEFT);
+        executeClick();
+        verify(studio).record(player, 2);
+    }
+
+    @Test
+    void newProjectButtonUsesATitleForm() throws Exception {
+        menu.open(player, station);
+        click(49, ClickType.LEFT);
+        executeClick();
+        verify(dialogs).create(player, new Location(world, 0, 0, 0));
+    }
+
+    @Test
+    void takingActionOnAnotherRowsPendingTakeCannotAcceptIt() throws Exception {
+        click(15, ClickType.LEFT); // Keep on track 1, while the pending take belongs to track 2.
+        executeClick();
+        verify(studio, never()).edit(any(), any());
+        verify(player).sendMessage("No pending take on this track");
+    }
+
+    @Test
+    void eachRowsReviewAndTheGlobalPreviewTargetDifferentAudio() throws Exception {
+        click(13, ClickType.LEFT);
+        executeClick();
+        verify(studio).previewTrack(player, 1);
+        click(23, ClickType.LEFT);
+        executeClick();
+        verify(studio).preview(player, true);
+        click(47, ClickType.LEFT);
+        executeClick();
+        verify(studio).preview(player, false);
+        click(48, ClickType.LEFT);
+        executeClick();
+        verify(studio).stop(player);
+    }
+
+    @Test
+    void projectActionsLiveOnTheirOwnScreen() throws Exception {
+        click(51, ClickType.LEFT);
+        executeClick();
+        click(14, ClickType.LEFT);
+        executeClick();
+        verify(studio).prepareBlankFromInventory(player);
+        click(18, ClickType.LEFT);
+        executeClick();
+        verify(dialogs).reset(player, new Location(world, 0, 0, 0));
+        verify(studio, never()).record(any(), anyInt());
+    }
+
+    @Test
+    void switchingTheActiveProjectRejectsAnAlreadyQueuedTrackClick() throws Exception {
+        click(9, ClickType.LEFT);
+        Song other = new Song(UUID.randomUUID(), player.getUniqueId(), "Player", "Other", List.of());
+        when(studio.requireProject(player)).thenReturn(new Project(other, null, 100, true));
+        executeClick();
+        verify(studio, never()).record(any(), anyInt());
+    }
+
+    @Test
+    void tracksFiveToEightHaveTheirOwnPageAndPreserveTrackNumbers() throws Exception {
+        when(studio.settings()).thenReturn(new StudioSettings(8, 40, 20, 60, 8, 32, 2, 0, 2));
+        menu.openProject(player, station);
+        click(53, ClickType.LEFT);
+        executeClick();
+        click(9, ClickType.LEFT);
+        executeClick();
+        verify(studio).record(player, 5);
+    }
+
+    @Test
+    void projectPaginationSelectsTheSongShownOnTheNextPage() throws Exception {
+        List<Project> library = java.util.stream.IntStream.range(0, 29).mapToObj(index ->
+                new Project(new Song(UUID.randomUUID(), player.getUniqueId(), "Player", "Song " + index, List.of()), null, 100, true)).toList();
+        when(studio.listProjects(player)).thenReturn(library);
+        menu.open(player, station);
+        click(53, ClickType.LEFT);
+        executeClick();
+        when(studio.requireProject(player)).thenReturn(library.get(28));
+        click(10, ClickType.LEFT);
+        executeClick();
+        verify(studio).selectProject(player, library.get(28).song().id());
+    }
+
+    @Test
+    void keepingTheMatchingRowsTakePreservesTheOtherSavedTracks() throws Exception {
+        click(24, ClickType.LEFT);
+        executeClick();
+        var result = ArgumentCaptor.forClass(Project.class);
+        verify(studio).edit(eq(player), result.capture());
+        assertNull(result.getValue().pending());
+        assertEquals(project.song().track(1), result.getValue().song().track(1));
+        assertEquals(project.pending(), result.getValue().song().track(2));
     }
 }

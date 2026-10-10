@@ -11,6 +11,7 @@ Sounds play at the performer's location for nearby listeners, while floating not
 - **Multitrack recording** — record successive takes while hearing the other tracks, preview the mix, and keep or discard each take.
 - **Player-made records** — publish immutable song editions onto blank discs, copy them, and play them from ordinary jukeboxes.
 - **Visual recording studio** — sneak-right-click an empty jukebox for track cards, volume and mute controls, take review, and publishing from your inventory.
+- **Song projects** — open your project library, create multiple songs, and keep each project's tracks and pending take independently.
 - **Song settings form** — name your song, choose tempo with a slider, and toggle the private metronome without commands.
 - **Live hotbar performance** — changing hotbar slots triggers the instrument's notes immediately.
 - **Alternate notes and chords** — sneaking opens a second set of sounds for the same instrument.
@@ -36,11 +37,13 @@ Created by [Justinas Launikonis](https://github.com/JustinasLa).
 
 [Project documentation](https://github.com/TF-Minecraft/Docs/blob/main/projects/MusicalInstruments/README.md)
 
-Sneak-right-click an empty jukebox, choose **Song settings**, and hold an instrument
-in your off-hand. Click a track to start recording; reopen the studio to **Stop**,
-**Listen to new take**, and **Keep take**. Add other tracks, mix their volume and
-mute controls, then **Prepare a blank disc** and **Publish song** using a music
-disc in your inventory. A book in the menu explains the steps.
+Sneak-right-click an empty jukebox to open your song projects. Choose a song or
+**Create a new song**, enter its title, and hold an instrument in your off-hand.
+Each horizontal row controls one track: record, volume, mute, listen, keep and
+discard. The bottom bar controls the full mix and stops recording or preview.
+**Project actions** opens title, tempo, metronome, blank-disc and copy controls.
+Use **Publish full song** with a blank disc in your inventory when the mix is ready.
+The recording guide explains the steps; projects and tracks have pages when needed.
 
 Commands are also available: start with `/music new <title>` and use
 `/music record 1`. After `/music stop`, listen with `/music preview take` and

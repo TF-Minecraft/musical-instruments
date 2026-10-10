@@ -79,4 +79,36 @@ class StudioStoreTest {
                 directory.resolve("songs").resolve(anotherId + ".yml"));
         assertThrows(IOException.class, () -> store.song(anotherId));
     }
+
+    @Test
+    void switchingProjectsMigratesTheLegacySongWithoutLosingItsPendingTake() throws Exception {
+        StudioStore store = new StudioStore(directory);
+        Project legacy = project();
+        store.save(legacy);
+        Path archived = directory.resolve("projects").resolve(legacy.song().owner().toString()).resolve(legacy.song().id() + ".yml");
+        Files.delete(archived); // Simulate the original single-project layout.
+        Project second = new Project(new Song(UUID.randomUUID(), legacy.song().owner(), "Musician", "Second", List.of()), null, 100, true);
+        store.save(second);
+        StudioStore reopened = new StudioStore(directory);
+        assertEquals(2, reopened.projects(legacy.song().owner()).size());
+        assertEquals(legacy, reopened.project(legacy.song().owner(), legacy.song().id()));
+        assertEquals(second, reopened.project(legacy.song().owner()).orElseThrow());
+        reopened.save(legacy);
+        assertEquals(legacy, new StudioStore(directory).project(legacy.song().owner()).orElseThrow());
+        assertEquals(second, reopened.project(legacy.song().owner(), second.song().id()));
+    }
+
+    @Test
+    void projectLibrariesAndDirectSelectionCannotCrossOwners() throws Exception {
+        StudioStore store = new StudioStore(directory);
+        Project first = project();
+        Project other = project();
+        store.save(first);
+        store.save(other);
+        assertEquals(List.of(first), store.projects(first.song().owner()));
+        assertThrows(IllegalArgumentException.class, () -> store.project(first.song().owner(), other.song().id()));
+        Path copied = directory.resolve("projects").resolve(first.song().owner().toString()).resolve(other.song().id() + ".yml");
+        Files.copy(directory.resolve("projects").resolve(other.song().owner().toString()).resolve(other.song().id() + ".yml"), copied);
+        assertThrows(IOException.class, () -> store.projects(first.song().owner()));
+    }
 }

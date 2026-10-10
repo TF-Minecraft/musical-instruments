@@ -129,6 +129,44 @@ class StudioServiceTest {
     }
 
     @Test
+    void newProjectsPreserveOlderTracksPendingTakesAndActiveSelectionAfterRestart() throws Exception {
+        Project first = new Project(song(track(1, "first")), track(2, "pending"), 120, false);
+        studio.save(player, first);
+        studio.create(player, "Second", false);
+        Project second = studio.requireProject(player);
+        assertEquals(2, studio.listProjects(player).size());
+        studio.selectProject(player, first.song().id());
+        assertEquals(first, studio.requireProject(player));
+        assertEquals(first, new StudioStore(directory).project(owner).orElseThrow());
+        studio.create(player, "Reset", true);
+        assertEquals(first.song().id(), studio.requireProject(player).song().id());
+        assertTrue(studio.requireProject(player).song().tracks().isEmpty());
+        assertEquals(second, store.project(owner, second.song().id()));
+    }
+
+    @Test
+    void changingProjectsIsBlockedDuringCaptureAndIsSafeAfterFinishing() throws Exception {
+        studio.create(player, "First", false);
+        UUID first = studio.requireProject(player).song().id();
+        studio.create(player, "Second", false);
+        studio.record(player, 1);
+        assertThrows(IllegalArgumentException.class, () -> studio.selectProject(player, first));
+        assertThrows(IllegalArgumentException.class, () -> studio.create(player, "Third", false));
+        studio.stop(player);
+        studio.selectProject(player, first);
+        assertEquals(first, studio.requireProject(player).song().id());
+    }
+
+    @Test
+    void listeningToOneTrackDoesNotEmitTheRestOfTheMix() throws Exception {
+        studio.save(player, new Project(song(track(1, "solo"), track(2, "other")), null, 100, false));
+        studio.previewTrack(player, 1);
+        tick.run();
+        verify(player).playSound(any(Location.class), eq("solo"), eq(SoundCategory.RECORDS), anyFloat(), anyFloat());
+        verify(player, never()).playSound(any(Location.class), eq("other"), any(SoundCategory.class), anyFloat(), anyFloat());
+    }
+
+    @Test
     void checkpointsAndShutdownRecoverAnUnacceptedTake() throws Exception {
         studio.create(player, "Song", false);
         studio.record(player, 1);

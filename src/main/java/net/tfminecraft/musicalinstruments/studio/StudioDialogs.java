@@ -32,11 +32,39 @@ public final class StudioDialogs {
     private final InstrumentPlugin plugin;
     private final StudioService studio;
     private final Reopen reopen;
+    private final Reopen library;
 
     StudioDialogs(InstrumentPlugin plugin, StudioService studio, Reopen reopen) {
+        this(plugin, studio, reopen, reopen);
+    }
+
+    StudioDialogs(InstrumentPlugin plugin, StudioService studio, Reopen reopen, Reopen library) {
         this.plugin = plugin;
         this.studio = studio;
         this.reopen = reopen;
+        this.library = library;
+    }
+
+    public void create(Player player, Location station) {
+        studio.requireIdle(player);
+        AtomicBoolean used = new AtomicBoolean();
+        Dialog dialog = Dialog.create(builder -> builder.empty()
+                .base(DialogBase.builder(Component.text("Create a song", NamedTextColor.GOLD))
+                        .body(List.of(DialogBody.plainMessage(Component.text("Your other projects will be kept."))))
+                        .inputs(List.of(DialogInput.text("title", Component.text("Song title"))
+                                .initial("Untitled").maxLength(64).width(300).build()))
+                        .canCloseWithEscape(true).build())
+                .type(DialogType.confirmation(
+                        ActionButton.create(Component.text("Create", NamedTextColor.GREEN), null, 150,
+                                action(player, station, used, (target, view) -> {
+                                    String title = view.getText("title");
+                                    if (title == null) throw new IllegalArgumentException("Enter a song title");
+                                    studio.create(target, title.strip(), false);
+                                })),
+                        ActionButton.create(Component.text("Back", NamedTextColor.GRAY), null, 150,
+                                action(player, station, used, (target, view) -> {}, library)))));
+        player.closeInventory();
+        player.showDialog(dialog);
     }
 
     public void settings(Player player, Location station) throws IOException {
@@ -75,7 +103,7 @@ public final class StudioDialogs {
         Project project = studio.requireProject(player);
         AtomicBoolean used = new AtomicBoolean();
         Dialog dialog = Dialog.create(builder -> builder.empty()
-                .base(DialogBase.builder(Component.text("Start a new song?", NamedTextColor.RED))
+                .base(DialogBase.builder(Component.text("Clear this project?", NamedTextColor.RED))
                         .body(List.of(DialogBody.plainMessage(Component.text(
                                 "This clears the editable tracks and pending take of '" + project.song().title()
                                         + "'. Published discs keep their music.")))).canCloseWithEscape(true).build())
@@ -104,6 +132,10 @@ public final class StudioDialogs {
     }
 
     private DialogAction action(Player owner, Location station, AtomicBoolean used, Response response) {
+        return action(owner, station, used, response, reopen);
+    }
+
+    private DialogAction action(Player owner, Location station, AtomicBoolean used, Response response, Reopen destination) {
         UUID ownerId = owner.getUniqueId();
         return DialogAction.customClick((view, audience) -> {
             if (!(audience instanceof Player target) || !target.getUniqueId().equals(ownerId)
@@ -113,7 +145,7 @@ public final class StudioDialogs {
                 try {
                     Block block = StudioMenu.requireStation(target, station);
                     response.apply(target, view);
-                    reopen.open(target, block);
+                    destination.open(target, block);
                 } catch (IllegalArgumentException ex) {
                     target.sendMessage(ex.getMessage());
                 } catch (IOException ex) {

@@ -114,11 +114,31 @@ public final class StudioService {
 
     public void create(Player player, String title, boolean reset) throws IOException {
         requireIdle(player);
-        if (!reset && project(player) != null) {
-            throw new IllegalArgumentException("A project already exists. Rename it, or use /music reset confirm");
-        }
-        save(player, new Project(new Song(UUID.randomUUID(), player.getUniqueId(), player.getName(), title, List.of()),
+        Project previous = project(player);
+        if (previous != null) save(player, previous); // Also preserve a take retained after a failed write.
+        UUID id = reset && previous != null ? previous.song().id() : UUID.randomUUID();
+        save(player, new Project(new Song(id, player.getUniqueId(), player.getName(), title, List.of()),
                 null, 100, true));
+        previews.remove(player.getUniqueId());
+    }
+
+    public List<Project> listProjects(Player player) throws IOException {
+        Map<UUID, Project> all = new LinkedHashMap<>();
+        for (Project project : store.projects(player.getUniqueId())) all.put(project.song().id(), project);
+        Project active = project(player);
+        if (active != null) all.put(active.song().id(), active);
+        return all.values().stream().sorted(java.util.Comparator.comparing((Project project) -> project.song().title(),
+                String.CASE_INSENSITIVE_ORDER).thenComparing(project -> project.song().id())).toList();
+    }
+
+    public void selectProject(Player player, UUID id) throws IOException {
+        Project current = project(player);
+        if (current != null && current.song().id().equals(id)) return;
+        requireIdle(player);
+        Project next = store.project(player.getUniqueId(), id);
+        if (current != null) save(player, current);
+        save(player, next);
+        previews.remove(player.getUniqueId());
     }
 
     public void save(Player player, Project project) throws IOException {
@@ -209,10 +229,24 @@ public final class StudioService {
         if (song.tracks().isEmpty()) {
             throw new IllegalArgumentException("Record and keep a track first");
         }
+        previewSong(player, song);
+        player.sendMessage(pending ? "Previewing the new take with the other tracks." : "Previewing the saved mix.");
+    }
+
+    public void previewTrack(Player player, int slot) throws IOException {
+        requireIdle(player);
+        Song song = requireProject(player).song();
+        Track track = song.track(slot);
+        if (track == null) throw new IllegalArgumentException("Record and keep this track first");
+        if (track.muted()) throw new IllegalArgumentException("Unmute this track to listen to it");
+        previewSong(player, new Song(song.id(), song.owner(), song.author(), song.title(), List.of(track)));
+        player.sendMessage("Listening to saved track " + slot + ".");
+    }
+
+    private void previewSong(Player player, Song song) {
         previews.remove(player.getUniqueId());
         capacity();
         previews.put(player.getUniqueId(), new Preview(song, clock + 1));
-        player.sendMessage(pending ? "Previewing the new take with the other tracks." : "Previewing the saved mix.");
     }
 
     public void makeBlank(Player player) {

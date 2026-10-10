@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,14 +32,56 @@ public final class StudioStore {
         if (!Files.exists(file)) {
             return Optional.empty();
         }
+        Project selected = decodeProject(file, owner, null);
+        Path current = projectFile(owner, selected.song().id());
+        return Optional.of(Files.exists(current) && Files.getLastModifiedTime(current).compareTo(Files.getLastModifiedTime(file)) > 0
+                ? decodeProject(current, owner, selected.song().id()) : selected);
+    }
+
+    public Project project(UUID owner, UUID id) throws IOException {
+        Path file = projectFile(owner, id);
+        if (Files.exists(file)) return decodeProject(file, owner, id);
+        return project(owner).filter(project -> project.song().id().equals(id))
+                .orElseThrow(() -> new IllegalArgumentException("That project is no longer available"));
+    }
+
+    public List<Project> projects(UUID owner) throws IOException {
+        Map<UUID, Project> result = new LinkedHashMap<>();
+        project(owner).ifPresent(project -> result.put(project.song().id(), project));
+        Path directory = root.resolve("projects").resolve(owner.toString());
+        if (Files.isDirectory(directory)) {
+            try (var files = Files.list(directory)) {
+                for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".yml")).toList()) {
+                    UUID id;
+                    try {
+                        String name = file.getFileName().toString();
+                        id = UUID.fromString(name.substring(0, name.length() - 4));
+                    } catch (IllegalArgumentException ex) {
+                        throw new IOException("Invalid project filename: " + file.getFileName(), ex);
+                    }
+                    Project project = decodeProject(file, owner, id);
+                    result.putIfAbsent(id, project);
+                }
+            }
+        }
+        return result.values().stream().sorted(Comparator.comparing((Project project) -> project.song().title(),
+                String.CASE_INSENSITIVE_ORDER).thenComparing(project -> project.song().id())).toList();
+    }
+
+    private Path projectFile(UUID owner, UUID id) {
+        return root.resolve("projects").resolve(owner.toString()).resolve(id + ".yml");
+    }
+
+    private Project decodeProject(Path file, UUID owner, UUID id) throws IOException {
         YamlConfiguration yaml = read(file);
         try {
             Song song = decodeSong(yaml);
             if (!song.owner().equals(owner)) {
                 throw new IllegalArgumentException("Project owner mismatch");
             }
+            if (id != null && !song.id().equals(id)) throw new IllegalArgumentException("Project ID mismatch");
             Track pending = yaml.isSet("pending") ? decodeTrack(map(yaml.get("pending"))) : null;
-            return Optional.of(new Project(song, pending, yaml.getInt("bpm"), yaml.getBoolean("metronome")));
+            return new Project(song, pending, yaml.getInt("bpm"), yaml.getBoolean("metronome"));
         } catch (RuntimeException ex) {
             throw new IOException("Invalid project " + owner, ex);
         }
@@ -58,13 +101,28 @@ public final class StudioStore {
     }
 
     public void save(Project project) throws IOException {
+        UUID owner = project.song().owner();
+        Path selectedFile = root.resolve("projects").resolve(owner + ".yml");
+        Files.createDirectories(projectFile(owner, project.song().id()).getParent());
+        // Archive the original single-project file before selecting a different song.
+        if (Files.exists(selectedFile)) {
+            Project previous = decodeProject(selectedFile, owner, null);
+            Path previousFile = projectFile(owner, previous.song().id());
+            if (!Files.exists(previousFile)) write(previousFile, encodeProject(previous), true);
+        }
+        YamlConfiguration yaml = encodeProject(project);
+        write(projectFile(owner, project.song().id()), yaml, true);
+        write(selectedFile, yaml, true);
+    }
+
+    private YamlConfiguration encodeProject(Project project) {
         YamlConfiguration yaml = encodeSong(project.song());
         yaml.set("bpm", project.bpm());
         yaml.set("metronome", project.metronome());
         if (project.pending() != null) {
             yaml.set("pending", encodeTrack(project.pending()));
         }
-        write(root.resolve("projects").resolve(project.song().owner() + ".yml"), yaml, true);
+        return yaml;
     }
 
     public void publish(Song song) throws IOException {
